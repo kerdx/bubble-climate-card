@@ -1,0 +1,50 @@
+save_program:
+  name: Save program
+  description: Create or replace the weekly program for one climate entity.
+  fields:
+    climate_entity:
+      name: Climate entity
+      description: Climate entity to schedule.
+      required: true
+      selector:
+        entity:
+          domain: climate
+    enabled:
+      name: Enabled
+      description: Whether the saved program is enabled.
+      required: true
+      selector:
+        boolean:
+    slots:
+      name: Time slots
+      description: Weekly slots. Each slot requires id, days (1 Monday to 7 Sunday), start and end (HH:MM), and temperature.
+      required: true
+      example: '[{"id":"weekday-morning","days":[1,2,3,4,5],"start":"06:30","end":"08:00","temperature":20}]'
+set_enabled:
+  name: Set program enabled
+  description: Enable or disable the saved program for one climate entity.
+  fields:
+    climate_entity:
+      name: Climate entity
+      description: Climate entity whose program to update.
+      required: true
+      selector:
+        entity:
+          domain: climate
+    enabled:
+      name: Enabled
+      description: Whether the program is enabled.
+      required: true
+      selector:
+        boolean:
+delete_program:
+  name: Delete program
+  description: Delete the saved program for one climate entity.
+  fields:
+    climate_entity:
+      name: Climate entity
+      description: Climate entity whose program to delete.
+      required: true
+      selector:
+        entity:
+          domain: climate

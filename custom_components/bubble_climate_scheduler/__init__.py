@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components.frontend import add_extra_js_url, remove_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -17,7 +18,7 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, PLATFORMS, STORAGE_KEY, STORAGE_VERSION
+from .const import DOMAIN, FRONTEND_URL, PLATFORMS, STORAGE_KEY, STORAGE_VERSION
 from .schedule import (
     ScheduleError,
     active_slot,
@@ -356,6 +357,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: Any) -> bool:
     )
     scheduler.unsub_state = hass.bus.async_listen("state_changed", scheduler.async_state_changed)
     await scheduler.async_evaluate()
+    add_extra_js_url(hass, FRONTEND_URL)
     return True
 
 
@@ -363,6 +365,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: Any) -> bool:
     scheduler: Scheduler = hass.data[DOMAIN][entry.entry_id]
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
+    remove_extra_js_url(hass, FRONTEND_URL)
     if scheduler.refresh:
         scheduler.refresh()
     if scheduler.unsub_state:

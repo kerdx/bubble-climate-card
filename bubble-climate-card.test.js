@@ -1,10 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BubbleClimateCard, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft } from './bubble-climate-card.js';
+import { BubbleClimateCard, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
   assert.equal(typeof clampTarget, 'function');
+});
+
+test('editor schema exposes climate entity and all supported visual options', () => {
+  assert.deepEqual(configSchema[0].selector.entity, { filter: { domain: ['climate'] } });
+  const fields = configSchema.map((field) => field.name);
+  for (const name of ['entity', 'name', 'icon', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
+  assert.deepEqual(defaultCardConfig('climate.living_room'), {
+    entity: 'climate.living_room', layout: 'compact', step: 0.5,
+    show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
+    show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
+  });
+  assert.equal(typeof BubbleClimateCard.getStubConfig, 'function');
+  assert.equal(typeof BubbleClimateCard.getConfigElement, 'function');
+});
+
+test('entity suggestion targets climate entities only and includes card type and defaults', () => {
+  assert.deepEqual(getEntitySuggestion({}, 'climate.living_room'), {
+    type: 'custom:bubble-climate-card', ...defaultCardConfig('climate.living_room'),
+  });
+  assert.equal(getEntitySuggestion({}, 'light.living_room'), null);
+  assert.deepEqual(BubbleClimateCard.getStubConfig({ states: {} }), defaultCardConfig('climate.example'));
+  assert.equal(Object.hasOwn(BubbleClimateCard.getStubConfig({ states: {} }), 'type'), false);
 });
 
 test('target is bounded and rounded to entity step', () => {

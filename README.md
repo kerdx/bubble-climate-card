@@ -20,6 +20,7 @@
 - Climate controls that follow the entity's available HVAC capabilities.
 - Weekly schedule editor opened from the calendar button.
 - Backend persistence and execution, independent of an open dashboard.
+- Visual card editor with a climate entity selector and entity suggestions.
 - One temperature target per scheduled interval, with Home Assistant timezone support.
 - A diagnostic schedule sensor and integration actions for managing programs.
 
@@ -32,20 +33,17 @@ The repository is distributed as a HACS **custom repository**; it is not current
 1. In HACS, open **⋮ → Custom repositories** and add [`https://github.com/kerdx/bubble-climate-card`](https://github.com/kerdx/bubble-climate-card) with category **Integration**.
 2. Install **Bubble Climate Scheduler** and restart Home Assistant.
 3. Go to **Settings → Devices & services → Add integration** and add **Bubble Climate Scheduler**.
-4. Add a Lovelace resource in **Settings → Dashboards → Resources**:
+4. Refresh or reopen the dashboard, then choose **Edit dashboard → Add card**. Search for and select **Bubble Climate Card**, choose a climate entity in the visual editor, and save.
 
-   | Field | Value |
-   | --- | --- |
-   | URL | `/bubble_climate_scheduler/bubble-climate-card.js` |
-   | Resource type | JavaScript module |
-
-5. Add a manual card to a dashboard using the YAML example below.
+The integration loads and registers the card's JavaScript module through Home Assistant's extra module URL. After integration setup, refresh the dashboard and choose **Edit dashboard → Add card → Bubble Climate Card**. Select the card and a climate entity in the visual editor, then save. Entity suggestions are available only on Home Assistant 2026.6 and later. The integration does not add a card to any dashboard automatically: you choose where to add it. No manual Lovelace resource or YAML configuration is required.
 
 ### Manual installation
 
 1. Copy `custom_components/bubble_climate_scheduler` into `config/custom_components/`.
 2. Restart Home Assistant, then add **Bubble Climate Scheduler** from **Settings → Devices & services → Add integration**.
-3. Add the Lovelace module resource shown above and create a manual card:
+3. Refresh or reopen the dashboard and add **Bubble Climate Card** from **Edit dashboard → Add card**. Select a climate entity in its visual editor.
+
+For users who prefer YAML, the following optional configuration is an alternative to the visual editor:
 
 ```yaml
 type: custom:bubble-climate-card
@@ -62,7 +60,7 @@ show_step_controls: true
 show_schedule_button: true
 ```
 
-The integration serves the bundled frontend JavaScript at the resource URL. No `schedule.*` helper or webhook is required.
+The integration serves and registers the bundled frontend JavaScript. No manual resource, `schedule.*` helper, or webhook is required.
 
 ## Card options
 
@@ -97,10 +95,10 @@ The climate card's manual controls are separate from scheduling and should respe
 
 ## Verification status
 
-The project minimum is Home Assistant 2025.1. The published `v0.1.0` checks include 20 passing Python unit tests, successful `compileall`, and JSON/YAML plus packaged-JavaScript synchronization checks. JavaScript tests are present but were not run because Node.js was unavailable. A live Home Assistant and browser test remains outstanding; these checks should not be read as live-environment verification. The schedule editor labels are currently in English.
+The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The `v0.1.1` verification record covers 21 Python unit tests, `compileall`, and JSON/YAML plus packaged-JavaScript synchronization checks. JavaScript tests were not run (Node.js unavailable). Home Assistant and browser behavior has not been verified in a live environment. The schedule editor labels are currently in English.
 
 ## Support and releases
 
 - [Report a bug or request a feature](https://github.com/kerdx/bubble-climate-card/issues)
-- [Browse releases](https://github.com/kerdx/bubble-climate-card/releases)
+- [Release v0.1.1](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.1) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
 - [MIT license](LICENSE)

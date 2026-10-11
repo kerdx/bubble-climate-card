@@ -1,10 +1,10 @@
 {
   "domain": "bubble_climate_scheduler",
   "name": "Bubble Climate Scheduler",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/kerdx/bubble-climate-card",
   "issue_tracker": "https://github.com/kerdx/bubble-climate-card/issues",
-  "dependencies": ["http"],
+  "dependencies": ["frontend", "http"],
   "codeowners": ["@kerdx"],
   "requirements": [],
   "iot_class": "calculated",

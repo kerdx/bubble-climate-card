@@ -17,7 +17,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(manifest["domain"], "bubble_climate_scheduler")
         self.assertEqual(hacs["homeassistant"], "2025.1.0")
         self.assertNotIn("category", hacs)
-        self.assertEqual(manifest["version"], "0.1.0")
+        self.assertEqual(manifest["version"], "0.1.1")
         self.assertEqual(manifest["issue_tracker"], "https://github.com/kerdx/bubble-climate-card/issues")
         self.assertTrue(manifest["config_flow"])
         self.assertTrue(manifest["single_config_entry"])
@@ -44,6 +44,19 @@ class PackageTests(unittest.TestCase):
         source = ROOT / "bubble-climate-card.js"
         served = ROOT / "custom_components/bubble_climate_scheduler/www/bubble-climate-card.js"
         self.assertEqual(source.read_bytes(), served.read_bytes())
+
+    def test_frontend_is_registered_as_an_integration_resource(self):
+        with (ROOT / "custom_components/bubble_climate_scheduler/manifest.json").open(encoding="utf-8") as file:
+            manifest = json.load(file)
+        self.assertIn("frontend", manifest["dependencies"])
+
+        const = (ROOT / "custom_components/bubble_climate_scheduler/const.py").read_text(encoding="utf-8")
+        integration = (ROOT / "custom_components/bubble_climate_scheduler/__init__.py").read_text(encoding="utf-8")
+        self.assertIn('FRONTEND_URL = "/bubble_climate_scheduler/bubble-climate-card.js"', const)
+        self.assertIn('StaticPathConfig("/bubble_climate_scheduler", str(www_path)', integration)
+        self.assertIn("add_extra_js_url(hass, FRONTEND_URL)", integration)
+        self.assertIn("remove_extra_js_url(hass, FRONTEND_URL)", integration)
+        self.assertTrue((ROOT / "custom_components/bubble_climate_scheduler/www/bubble-climate-card.js").is_file())
 
 
 if __name__ == "__main__":

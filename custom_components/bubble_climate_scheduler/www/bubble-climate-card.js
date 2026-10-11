@@ -84,7 +84,52 @@ const valid = (v) => v !== undefined && v !== null && v !== '' && v !== 'unknown
 const modes = (entity) => Array.isArray(entity?.attributes?.hvac_modes) ? entity.attributes.hvac_modes : [];
 const HTMLElementBase = globalThis.HTMLElement ?? class {};
 
+export const defaultCardConfig = (entity = 'climate.example') => ({
+  entity, layout: 'compact', step: 0.5,
+  show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
+  show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
+});
+export const getEntitySuggestion = (_hass, entityId) => typeof entityId === 'string' && entityId.startsWith('climate.')
+  ? { type: 'custom:bubble-climate-card', ...defaultCardConfig(entityId) }
+  : null;
+
+export const configSchema = [
+  { name: 'entity', required: true, selector: { entity: { filter: { domain: ['climate'] } } } },
+  { name: 'name', selector: { text: {} } },
+  { name: 'icon', selector: { icon: {} } },
+  ...['show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button'].map((name) => ({ name, selector: { boolean: {} } })),
+  { name: 'step', selector: { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } } },
+];
+
+export class BubbleClimateCardEditor extends HTMLElementBase {
+  set hass(value) { this._hass = value; const form = this.shadowRoot?.querySelector('ha-form'); if (form) form.hass = value; }
+  setConfig(config) {
+    this._config = { ...defaultCardConfig(config?.entity || 'climate.example'), ...config };
+    this._render();
+  }
+  _render() {
+    if (!this.attachShadow) return;
+    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+    this.shadowRoot.innerHTML = '<ha-form></ha-form>';
+    const form = this.shadowRoot.querySelector('ha-form');
+    form.hass = this._hass;
+    form.data = { ...this._config };
+    form.schema = configSchema;
+    form.computeLabel = (schema) => ({ entity: 'Climate entity', name: 'Name', icon: 'Icon', step: 'Step' }[schema.name] || schema.name.replaceAll('_', ' '));
+    form.addEventListener('value-changed', (event) => {
+      event.stopPropagation();
+      this._config = { ...this._config, ...(event.detail?.value || {}) };
+      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
+    });
+  }
+}
+
 export class BubbleClimateCard extends HTMLElementBase {
+  static getConfigElement() { return document.createElement('bubble-climate-card-editor'); }
+  static getStubConfig(hass) {
+    const entity = Object.keys(hass?.states || {}).find((id) => id.startsWith('climate.')) || 'climate.example';
+    return defaultCardConfig(entity);
+  }
   setConfig(config) {
     if (!config?.entity || !/^climate\./.test(config.entity)) throw new Error('Specify a climate entity (climate.*).');
     if ((config.layout ?? 'compact') !== 'compact') throw new Error('Supported layout is "compact".');
@@ -205,7 +250,8 @@ export class BubbleClimateCard extends HTMLElementBase {
 }
 
 if (globalThis.customElements && globalThis.HTMLElement && !customElements.get('bubble-climate-card')) customElements.define('bubble-climate-card', BubbleClimateCard);
+if (globalThis.customElements && globalThis.HTMLElement && !customElements.get('bubble-climate-card-editor')) customElements.define('bubble-climate-card-editor', BubbleClimateCardEditor);
 if (globalThis.window) {
   window.customCards = window.customCards || [];
-  if (!window.customCards.some((card) => card.type === 'bubble-climate-card')) window.customCards.push({ type: 'bubble-climate-card', name: 'Bubble Climate Card', description: 'Compact standalone climate card' });
+  if (!window.customCards.some((card) => card.type === 'bubble-climate-card')) window.customCards.push({ type: 'bubble-climate-card', name: 'Bubble Climate Card', description: 'Compact standalone climate card', getEntitySuggestion });
 }

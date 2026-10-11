@@ -1,64 +1,106 @@
-# Bubble Climate Card + Scheduler — 0.1.0
+<div align="center">
 
-Card Lovelace autonoma in stile Bubble, con controlli per climate e programmazione settimanale gestita da un'integrazione Home Assistant indipendente. L'agenda continua a funzionare con la dashboard chiusa e dopo il riavvio di Home Assistant. Non include codice Nodalia.
+# Bubble Climate Card
 
-## Installazione con HACS
+### A focused climate control card with a persistent weekly schedule for Home Assistant.
 
-1. In HACS apri **⋮ → Repository personalizzati** e aggiungi `https://github.com/kerdx/bubble-climate-card` scegliendo la categoria **Integration**. La categoria viene scelta in HACS, non nel file `hacs.json`.
-2. Installa **Bubble Climate Scheduler** da HACS e riavvia Home Assistant.
-3. Vai in **Impostazioni → Dispositivi e servizi → Aggiungi integrazione** e aggiungi **Bubble Climate Scheduler**.
-4. Aggiungi una risorsa da **Impostazioni → Dashboard → Risorse**:
+[![Release](https://img.shields.io/github/v/release/kerdx/bubble-climate-card?label=release)](https://github.com/kerdx/bubble-climate-card/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Minimum Home Assistant version](https://img.shields.io/badge/Home%20Assistant-2025.1%2B-41BDF5)](https://www.home-assistant.io/)
+[![Add repository to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kerdx&repository=bubble-climate-card&category=integration)
 
-   ```text
-   URL: /bubble_climate_scheduler/bubble-climate-card.js
-   Tipo: JavaScript module
-   ```
+</div>
 
-5. Nella dashboard aggiungi una scheda manuale usando il YAML d'esempio nella sezione **Installazione manuale**.
+`custom:bubble-climate-card` is a standalone Lovelace climate card with Bubble-inspired styling and an optional weekly temperature scheduler. Scheduling runs in the Home Assistant integration backend, so it continues when the dashboard is closed and after Home Assistant restarts.
 
-## Installazione manuale
+> This is an independent project. It is not part of Bubble Card and does not depend on Bubble Card or Nodalia.
 
-1. Copia `custom_components/bubble_climate_scheduler` in `config/custom_components/`.
-2. Riavvia Home Assistant e aggiungi **Bubble Climate Scheduler** da **Impostazioni → Dispositivi e servizi → Aggiungi integrazione**.
-3. Aggiungi la risorsa Lovelace indicata sopra e crea una scheda manuale:
+## Features
 
-   ```yaml
-   type: custom:bubble-climate-card
-   entity: climate.termostato_camera
-   name: Termostato Camera
-   icon: mdi:bed-king-outline
-   layout: compact
-   show_state_chip: false
-   show_current_temperature_chip: true
-   show_humidity_chip: false
-   show_unavailable_badge: false
-   show_mode_buttons: true
-   show_step_controls: true
-   show_schedule_button: true
-   ```
+- Climate controls that follow the entity's available HVAC capabilities.
+- Weekly schedule editor opened from the calendar button.
+- Backend persistence and execution, independent of an open dashboard.
+- One temperature target per scheduled interval, with Home Assistant timezone support.
+- A diagnostic schedule sensor and integration actions for managing programs.
 
-La risorsa JavaScript è servita dall'integrazione. Non serve creare un helper `schedule.*` né configurare webhook.
+## Installation
 
-## Programmazione e limiti
+The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-Tocca il calendario nella scheda per aprire l'editor. Puoi impostare fasce, giorni, orari e temperatura; la programmazione è attiva solo se salvata con **Enabled** selezionato.
+### HACS
 
-- È supportato un solo programma (singleton) per una singola entità climate.
-- Si può programmare un singolo target di temperatura. La modalità `heat_cool` non è supportata per la programmazione e viene rifiutata.
-- Le fasce sovrapposte vengono rifiutate; una fascia che termina prima dell'inizio attraversa la mezzanotte. Gli intervalli sono `[inizio, fine)` e usano il fuso orario di Home Assistant.
-- Fuori dalle fasce l'integrazione non imposta una modalità né spegne il climate: la temperatura corrente resta invariata. Disabilitare o eliminare un programma non cambia il target già impostato.
-- I dati sono conservati nello storage di Home Assistant e il backend continua in background anche senza dashboard. Dopo riavvio, salvataggio e cambio fascia applica il target, se diverso da quello impostato. Una variazione manuale durante la fascia non viene sovrascritta ogni minuto; la programmazione riprende alla fascia successiva.
-- Se il climate è indisponibile, il target resta in attesa e viene ritentato al ripristino. Limiti e passo devono essere validi; i target non validi non vengono arrotondati silenziosamente.
-- L'integrazione espone il sensore diagnostico dei programmi e le azioni `bubble_climate_scheduler.save_program`, `set_enabled` e `delete_program`.
+1. In HACS, open **⋮ → Custom repositories** and add [`https://github.com/kerdx/bubble-climate-card`](https://github.com/kerdx/bubble-climate-card) with category **Integration**.
+2. Install **Bubble Climate Scheduler** and restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration** and add **Bubble Climate Scheduler**.
+4. Add a Lovelace resource in **Settings → Dashboards → Resources**:
 
-## Test e verifica
+   | Field | Value |
+   | --- | --- |
+   | URL | `/bubble_climate_scheduler/bubble-climate-card.js` |
+   | Resource type | JavaScript module |
 
-Comandi di test disponibili nel progetto:
+5. Add a manual card to a dashboard using the YAML example below.
 
-```sh
-python3 -m unittest discover -s tests_backend -v
-python3 -m compileall -q custom_components/bubble_climate_scheduler
-node --test
+### Manual installation
+
+1. Copy `custom_components/bubble_climate_scheduler` into `config/custom_components/`.
+2. Restart Home Assistant, then add **Bubble Climate Scheduler** from **Settings → Devices & services → Add integration**.
+3. Add the Lovelace module resource shown above and create a manual card:
+
+```yaml
+type: custom:bubble-climate-card
+entity: climate.living_room
+name: Living Room
+icon: mdi:thermostat
+layout: compact
+show_state_chip: false
+show_current_temperature_chip: true
+show_humidity_chip: false
+show_unavailable_badge: false
+show_mode_buttons: true
+show_step_controls: true
+show_schedule_button: true
 ```
 
-I test non verificano il funzionamento in una vera istanza Home Assistant né in un browser; questi ambienti non sono stati verificati. Prima dell'uso quotidiano prova un programma disabilitato, uno slot attivo, un riavvio e un climate indisponibile/ripristinato. Le etichette dell'interfaccia sono attualmente in inglese.
+The integration serves the bundled frontend JavaScript at the resource URL. No `schedule.*` helper or webhook is required.
+
+## Card options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `entity` | — | Climate entity to control. Required. |
+| `name` | Entity name | Optional card title. |
+| `icon` | Entity icon | Optional icon override. |
+| `layout` | `compact` | Card layout. |
+| `show_state_chip` | `true` | Show the current HVAC mode chip. |
+| `show_current_temperature_chip` | `true` | Show the measured temperature chip. |
+| `show_humidity_chip` | `false` | Show the humidity chip when available. |
+| `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
+| `show_mode_buttons` | `true` | Show buttons for modes exposed by the entity. |
+| `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
+| `show_schedule_button` | `true` | Show the button that opens the weekly schedule editor. |
+| `step` | `0.5` | Temperature increment for the step controls. |
+
+## Weekly schedule
+
+The calendar button opens a weekly editor. A saved program runs only when **Enabled** is selected. The backend owns schedule persistence and execution; the dashboard can be closed without interrupting it.
+
+- One program is supported per climate entity; each program can contain multiple non-overlapping time slots, each with one target temperature.
+- Days use ISO weekday numbers; times use `HH:MM` in Home Assistant's timezone. Intervals are `[start, end)`. An end time earlier than its start crosses midnight; overlapping intervals are rejected.
+- Outside scheduled slots, the integration makes no climate call: it does not change the HVAC mode or turn the entity off.
+- A manual target change during a slot is not reasserted every minute. The schedule resumes at the next slot.
+- Unavailable climate entities remain pending and are retried when available. Targets must satisfy the entity's temperature limits and step; invalid targets are not silently rounded.
+- Scheduling `heat_cool` is rejected. The backend uses `climate.set_temperature` only.
+- Disabling or deleting a program does not restore a previous target.
+
+The climate card's manual controls are separate from scheduling and should respect the HVAC capabilities exposed by the entity. The integration also exposes a diagnostic schedule sensor and the actions `bubble_climate_scheduler.save_program`, `bubble_climate_scheduler.set_enabled`, and `bubble_climate_scheduler.delete_program`.
+
+## Verification status
+
+The project minimum is Home Assistant 2025.1. The published `v0.1.0` checks include 20 passing Python unit tests, successful `compileall`, and JSON/YAML plus packaged-JavaScript synchronization checks. JavaScript tests are present but were not run because Node.js was unavailable. A live Home Assistant and browser test remains outstanding; these checks should not be read as live-environment verification. The schedule editor labels are currently in English.
+
+## Support and releases
+
+- [Report a bug or request a feature](https://github.com/kerdx/bubble-climate-card/issues)
+- [Browse releases](https://github.com/kerdx/bubble-climate-card/releases)
+- [MIT license](LICENSE)

@@ -307,7 +307,6 @@ export class BubbleClimateCard extends HTMLElementBase {
       .controls .schedule{display:grid;place-items:center;padding:8px 11px}
       .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
       @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 9px}.controls{gap:6px}.controls button{padding:6px 9px;font-size:13px}.controls .setpoint{min-width:54px}.controls .schedule{padding:6px 8px}}
-      dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:16px;width:min(560px,calc(100vw - 40px));max-height:85vh;overflow:auto}dialog::backdrop{background:#0008}.slot{border-top:1px solid var(--divider-color);padding:12px 0}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.days{display:flex;gap:8px;flex-wrap:wrap}.error{color:var(--error-color)}
     </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div></div></ha-card>`;
     const root = this.shadowRoot;
     const icon = root.querySelector('.icon');
@@ -400,7 +399,6 @@ export class BubbleClimateCard extends HTMLElementBase {
       button{font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 11px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.selected{background:var(--primary-color);color:var(--text-primary-color,#fff)}
       select:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.badge{color:var(--error-color);font-size:11px;white-space:nowrap}.empty{color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis}
       @media(max-width:420px){ha-card{padding:7px 9px}.head,.body{gap:4px}.target{font-size:16px}.body button{padding:4px 5px;min-width:24px}.chip{max-width:62px}}
-      dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:16px;width:min(560px,calc(100vw - 40px));max-height:85vh;overflow:auto}dialog::backdrop{background:#0008}.slot{border-top:1px solid var(--divider-color);padding:12px 0}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.days{display:flex;gap:8px;flex-wrap:wrap}.error{color:var(--error-color)}
     </style><ha-card><div class="head"><span class="icon"><ha-icon></ha-icon></span><span class="title"></span><span class="chips"></span><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div>
        <div class="body"></div></ha-card>`;
     const root = this.shadowRoot;
@@ -456,32 +454,102 @@ export class BubbleClimateCard extends HTMLElementBase {
     dialog?.remove();
     this._render();
   }
+  _scheduleDialogStyle() {
+    return `<style>
+      dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:0;border-radius:24px;width:min(640px,calc(100vw - 40px));max-height:85vh;overflow:auto;padding:0;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+      dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
+      .dlg-head{display:flex;align-items:center;gap:12px;padding:18px 22px 14px;border-bottom:1px solid var(--divider-color);position:sticky;top:0;background:var(--card-background-color,var(--ha-card-background));z-index:1}
+      .dlg-head .dlg-icon{width:40px;height:40px;flex:0 0 40px;border-radius:50%;display:grid;place-items:center;background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+      .dlg-head .dlg-icon ha-icon{--mdc-icon-size:22px;display:block}
+      .dlg-head .dlg-titles{flex:1 1 auto;min-width:0}
+      .dlg-head h2{margin:0;font-size:17px;font-weight:600}
+      .dlg-head .dlg-sub{font-size:12px;color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .dlg-head .close{flex:0 0 auto;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;border:0;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer}
+      .dlg-head .close:hover{background:var(--divider-color)}
+      .dlg-head .close ha-icon{--mdc-icon-size:18px;display:block}
+      .dlg-body{padding:16px 22px 20px}
+      .statusline{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;background:var(--secondary-background-color);font-size:13px;color:var(--secondary-text-color);margin-bottom:14px}
+      .statusline .chip{font-weight:600;color:var(--primary-text-color)}
+      .error{color:var(--error-color);font-size:13px;margin:8px 0}
+      .switch{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;margin-bottom:14px}
+      .switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:var(--divider-color);position:relative;cursor:pointer;transition:background .2s;margin:0}
+      .switch input::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--text-primary-color,#fff);transition:transform .2s}
+      .switch input:checked{background:var(--bubble-accent-color,var(--primary-color))}
+      .switch input:checked::after{transform:translateX(18px)}
+      .switch input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+      .slot{border:1px solid var(--divider-color);border-radius:16px;padding:14px;margin:0 0 12px;background:var(--secondary-background-color)}
+      .slot .slot-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+      .slot h3{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color)}
+      .slot .remove{border:0;background:transparent;color:var(--error-color);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:5px 9px;border-radius:999px}
+      .slot .remove:hover{background:color-mix(in srgb,var(--error-color) 12%,transparent)}
+      .days{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+      .days label{position:relative;cursor:pointer}
+      .days input{position:absolute;opacity:0;width:1px;height:1px;margin:0;inset:auto}
+      .days .day{display:grid;place-items:center;min-width:38px;height:32px;padding:0 6px;border-radius:999px;background:var(--card-background-color,var(--ha-card-background));font-size:12px;font-weight:600;color:var(--secondary-text-color);transition:background .15s,color .15s}
+      .days input:checked ~ .day{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+      .days input:focus-visible ~ .day{outline:2px solid var(--primary-color);outline-offset:2px}
+      .field{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+      .field label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--secondary-text-color)}
+      .field input{font:inherit;font-size:14px;color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:10px;padding:7px 10px}
+      .field input:focus-visible{outline:2px solid var(--primary-color);outline-offset:1px;border-color:transparent}
+      .dlg-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+      .btn{font:inherit;font-size:14px;font-weight:600;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:9px 16px;cursor:pointer;white-space:nowrap}
+      .btn:hover{background:var(--divider-color)}
+      .btn:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+      .btn.primary{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+      .btn.danger{color:var(--error-color)}
+      .btn.ghost{background:transparent}
+      .btn.ghost:hover{background:var(--secondary-background-color)}
+    </style>`;
+  }
   _renderScheduleDialog() {
     const old = this.shadowRoot.querySelector('dialog'); old?.remove();
     const dialog = document.createElement('dialog'); dialog.setAttribute('aria-label', 'Weekly climate schedule');
-    const heading = document.createElement('h2'); heading.textContent = 'Weekly schedule'; dialog.append(heading);
+    dialog.innerHTML = `${this._scheduleDialogStyle()}<div class="dlg-head"><span class="dlg-icon"><ha-icon icon="mdi:calendar-clock"></ha-icon></span><div class="dlg-titles"><h2>Weekly schedule</h2><div class="dlg-sub"></div></div><button class="close" aria-label="Close schedule editor" title="Close"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dlg-body"></div>`;
+    const body = dialog.querySelector('.dlg-body');
+    dialog.querySelector('.close').addEventListener('click', () => this._closeSchedule(dialog));
+    dialog.querySelector('.dlg-sub').textContent = this.config.name || this.config.entity;
     const sensor = this._scheduleSensor(), program = sensor?.attributes?.programs?.[this.config.entity];
     if (!sensor) {
-      const p = document.createElement('p'); p.textContent = 'Scheduler backend is not installed. Install and configure bubble_climate_scheduler to edit a program.'; dialog.append(p);
-      if (typeof this.config.schedule_entity === 'string' && /^schedule\.[\w-]+$/.test(this.config.schedule_entity)) { const link = document.createElement('button'); link.textContent = 'Open legacy schedule'; link.addEventListener('click', () => this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: this.config.schedule_entity }, bubbles: true, composed: true }))); dialog.append(link); }
+      const p = document.createElement('p'); p.className = 'error'; p.textContent = 'Scheduler backend is not installed. Install and configure bubble_climate_scheduler to edit a program.'; body.append(p);
+      if (typeof this.config.schedule_entity === 'string' && /^schedule\.[\w-]+$/.test(this.config.schedule_entity)) { const link = document.createElement('button'); link.className = 'btn'; link.textContent = 'Open legacy schedule'; link.addEventListener('click', () => this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: this.config.schedule_entity }, bubbles: true, composed: true }))); body.append(link); }
     } else {
-      const status = document.createElement('p'); status.textContent = `Active slot: ${program?.active_slot_id || 'none'} · Next change: ${program?.next_change || 'none'}`; dialog.append(status);
-      if (program?.last_error) { const p=document.createElement('p'); p.className='error'; p.textContent=String(program.last_error); dialog.append(p); }
-      const enabledLabel=document.createElement('label'), enabled=document.createElement('input'); enabled.type='checkbox'; enabled.checked=Boolean(this._scheduleDraft.enabled); enabledLabel.append(enabled, document.createTextNode(' Enabled')); enabled.addEventListener('change',()=>this._scheduleDraft.enabled=enabled.checked); dialog.append(enabledLabel);
-      const slots=document.createElement('div');
-      const renderSlots=()=>{ slots.replaceChildren(); this._scheduleDraft.slots.forEach((slot,index)=>{
-        const box=document.createElement('section'); box.className='slot'; const title=document.createElement('h3'); title.textContent=`Slot ${index+1}`; box.append(title);
-        const days=document.createElement('div'); days.className='days'; ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach((day,i)=>{const label=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.checked=slot.days.includes(i+1);cb.setAttribute('aria-label',day);cb.addEventListener('change',()=>{slot.days=cb.checked?[...new Set([...slot.days,i+1])]:slot.days.filter(x=>x!==i+1)});label.append(cb,document.createTextNode(day));days.append(label)});box.append(days);
-        const field=document.createElement('div');field.className='field'; for(const [key,labelText,type] of [['start','Start','time'],['end','End','time'],['temperature','Target','number']]){const label=document.createElement('label');label.textContent=labelText+' ';const input=document.createElement('input');input.type=type;input.value=String(slot[key]);if(key==='temperature')input.step='any';input.setAttribute('aria-label',labelText);input.addEventListener('input',()=>slot[key]=type==='number'?input.value:input.value);label.append(input);field.append(label)}
-        const remove=document.createElement('button');remove.textContent='Remove slot';remove.setAttribute('aria-label',`Remove slot ${index+1}`);remove.addEventListener('click',()=>{this._scheduleDraft.slots.splice(index,1);renderSlots()});field.append(remove);box.append(field);slots.append(box);
-      })}; renderSlots();dialog.append(slots);
-      const add=document.createElement('button');add.textContent='Add slot';add.addEventListener('click',()=>{this._scheduleDraft.slots.push({id:globalThis.crypto?.randomUUID?.()||`slot-${Date.now()}-${Math.random().toString(36).slice(2)}`,days:[1],start:'08:00',end:'09:00',temperature:20});renderSlots()});dialog.append(add);
-      const error=document.createElement('p');error.className='error';error.textContent=this._scheduleError||'';dialog.append(error);
-      const save=document.createElement('button');save.textContent='Save';save.addEventListener('click',async()=>{const issue=validateScheduleDraft(this._scheduleDraft);if(issue){error.textContent=issue;return}try{await this._hass.callService('bubble_climate_scheduler','save_program',{climate_entity:this.config.entity,enabled:this._scheduleDraft.enabled,slots:this._scheduleDraft.slots.map(s=>({id:s.id,days:[...s.days].sort((a,b)=>a-b),start:s.start,end:s.end,temperature:Number(s.temperature)}))});this._closeSchedule(dialog)}catch(err){error.textContent=String(err?.message||err)}});dialog.append(save);
-      const del=document.createElement('button');del.textContent='Delete program';del.addEventListener('click',async()=>{try{await this._hass.callService('bubble_climate_scheduler','delete_program',{climate_entity:this.config.entity});this._closeSchedule(dialog)}catch(err){error.textContent=String(err?.message||err)}});dialog.append(del);
+      const statusline = document.createElement('div'); statusline.className = 'statusline';
+      const stLabel = document.createElement('span'); stLabel.textContent = 'Next change: ';
+      const stValue = document.createElement('span'); stValue.className = 'chip'; stValue.textContent = program?.next_change || 'none';
+      statusline.append(stLabel, stValue);
+      if (program?.active_slot_id) { const act = document.createElement('span'); act.textContent = ` · Active: ${program.active_slot_id}`; statusline.append(act); }
+      body.append(statusline);
+      if (program?.last_error) { const p = document.createElement('p'); p.className = 'error'; p.textContent = String(program.last_error); body.append(p); }
+      const enabledLabel = document.createElement('label'), enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(this._scheduleDraft.enabled); enabledLabel.className = 'switch'; enabledLabel.append(enabled, document.createTextNode('Enabled')); enabled.addEventListener('change', () => this._scheduleDraft.enabled = enabled.checked); body.append(enabledLabel);
+      const slots = document.createElement('div');
+      const renderSlots = () => { slots.replaceChildren(); this._scheduleDraft.slots.forEach((slot, index) => {
+        const box = document.createElement('section'); box.className = 'slot';
+        const slotHead = document.createElement('div'); slotHead.className = 'slot-head';
+        const title = document.createElement('h3'); title.textContent = `Slot ${index + 1}`;
+        const remove = document.createElement('button'); remove.className = 'remove'; remove.textContent = 'Remove'; remove.setAttribute('aria-label', `Remove slot ${index + 1}`); remove.addEventListener('click', () => { this._scheduleDraft.slots.splice(index, 1); renderSlots(); });
+        slotHead.append(title, remove); box.append(slotHead);
+        const days = document.createElement('div'); days.className = 'days'; ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((day, i) => {
+          const label = document.createElement('label'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = slot.days.includes(i + 1); cb.setAttribute('aria-label', day); cb.addEventListener('change', () => { slot.days = cb.checked ? [...new Set([...slot.days, i + 1])] : slot.days.filter((x) => x !== i + 1); });
+          const pill = document.createElement('span'); pill.className = 'day'; pill.textContent = day[0]; label.append(cb, pill); days.append(label);
+        }); box.append(days);
+        const field = document.createElement('div'); field.className = 'field';
+        for (const [key, labelText, type] of [['start', 'Start', 'time'], ['end', 'End', 'time'], ['temperature', 'Target', 'number']]) {
+          const label = document.createElement('label'); label.textContent = labelText;
+          const input = document.createElement('input'); input.type = type; input.value = String(slot[key]); if (key === 'temperature') input.step = 'any'; input.setAttribute('aria-label', labelText); input.addEventListener('input', () => slot[key] = input.value);
+          label.append(input); field.append(label);
+        }
+        box.append(field); slots.append(box);
+      })}; renderSlots(); body.append(slots);
+      const error = document.createElement('p'); error.className = 'error'; error.textContent = this._scheduleError || '';
+      const add = document.createElement('button'); add.className = 'btn ghost'; add.textContent = '+ Add slot'; add.addEventListener('click', () => { this._scheduleDraft.slots.push({ id: globalThis.crypto?.randomUUID?.() || `slot-${Date.now()}-${Math.random().toString(36).slice(2)}`, days: [1], start: '08:00', end: '09:00', temperature: 20 }); renderSlots(); });
+      body.append(add); body.append(error);
+      const actions = document.createElement('div'); actions.className = 'dlg-actions';
+      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = 'Delete program'; del.addEventListener('click', async () => { try { await this._hass.callService('bubble_climate_scheduler', 'delete_program', { climate_entity: this.config.entity }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(del);
+      const save = document.createElement('button'); save.className = 'btn primary'; save.textContent = 'Save program'; save.addEventListener('click', async () => { const issue = validateScheduleDraft(this._scheduleDraft); if (issue) { error.textContent = issue; return; } try { await this._hass.callService('bubble_climate_scheduler', 'save_program', { climate_entity: this.config.entity, enabled: this._scheduleDraft.enabled, slots: this._scheduleDraft.slots.map((s) => ({ id: s.id, days: [...s.days].sort((a, b) => a - b), start: s.start, end: s.end, temperature: Number(s.temperature) })) }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(save);
+      body.append(actions);
     }
-    const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.addEventListener('click',()=>this._closeSchedule(dialog));dialog.append(cancel);
-    dialog.addEventListener('cancel',(event)=>{event.preventDefault();this._closeSchedule(dialog)}); this.shadowRoot.append(dialog);
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); this._closeSchedule(dialog); }); this.shadowRoot.append(dialog);
     if (this._scheduleOpen) dialog.showModal();
   }
   _setTemperature(value, entity) {

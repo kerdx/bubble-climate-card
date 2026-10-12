@@ -29,6 +29,8 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
+**Version note:** the latest published release is `v0.1.1`. The current `main` branch contains the upcoming `0.1.2` compact-layout/card-picker changes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+
 ### HACS
 
 1. In HACS, open **⋮ → Custom repositories** and add [`https://github.com/kerdx/bubble-climate-card`](https://github.com/kerdx/bubble-climate-card) with category **Integration**.
@@ -99,10 +101,10 @@ The climate card's manual controls are separate from scheduling and should respe
 
 ## Verification status
 
-The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The `v0.1.2` verification checks are performed by the release coordinator: 21 Python unit tests and `compileall`. Node.js is unavailable, so JavaScript tests are not run. Live Home Assistant/browser behavior and the layout have not been visually verified. The schedule editor labels are currently in English.
+The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The current `main` branch passed 21 Python unit tests and `compileall`. Node.js is unavailable, so JavaScript tests were not run. Live Home Assistant/browser behavior and the layout have not been visually verified. The schedule editor labels are currently in English.
 
 ## Support and releases
 
 - [Report a bug or request a feature](https://github.com/kerdx/bubble-climate-card/issues)
-- [Release v0.1.2](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.2) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
+- [Latest published release](https://github.com/kerdx/bubble-climate-card/releases/latest) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
 - [MIT license](LICENSE)

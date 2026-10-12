@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.5
+
+- Restyle the `row` layout control cluster to match the Bubble Card look: decrease, target setpoint, increase, and the schedule calendar button are now independent rounded pills with a gap instead of one fused background bar.
+- Emphasize the row current-temperature chip with a pill background and semibold text; its house icon stays secondary-colored and hidden from assistive technology.
+- Controls keep theme-driven colors (`--secondary-background-color`, `--divider-color`) and the existing shrink/scroll behavior on narrow cards; the calendar button remains reachable.
+- No backend, manifest behavior, or card option changes.
+
 ## v0.1.4
 
 - Make the horizontal entity-row climate layout the default (`layout: row`): circular status-aware icon, name plus live `hvac_action`/state status with relative time, current-temperature chip, and a control cluster with decrease, setpoint, increase, and the schedule calendar button.

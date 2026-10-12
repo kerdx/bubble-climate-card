@@ -89,6 +89,8 @@ export const temperaturePayload = (entity, value, step) => {
   return target === null ? null : { temperature: target };
 };
 
+export const hvacToggleMode = (entity) => { if (!entity || !validState(entity.state)) return null; const mode = entity.state === 'off' ? 'heat' : 'off'; return modes(entity).includes(mode) ? mode : null; };
+
 const valid = (v) => v !== undefined && v !== null && v !== '' && v !== 'unknown' && v !== 'unavailable';
 export const normalizeLayout = (value) => {
   if (value === undefined || value === null || value === '') return 'bubble';
@@ -235,7 +237,8 @@ export class BubbleClimateCard extends HTMLElementBase {
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._render();
   }
-  set hass(hass) { this._hass = hass; this._render(); }
+  set hass(hass) { this._hass = hass; this._reconcileOptimistic(); this._render(); }
+  disconnectedCallback() { clearTimeout(this._optimisticTimer); this._optimisticTimer = null; this._optimistic = null; }
   getCardSize() { return this.config?.layout === 'compact' ? 2 : 1; }
   _service(domain, service, data) { if (this._hass) this._hass.callService(domain, service, data); }
   _statusDisplay(entity) {
@@ -270,7 +273,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     else this._renderRow();
   }
   _renderRow() {
-    const c = this.config, e = this._hass?.states?.[c.entity], a = e?.attributes || {};
+    const c = this.config, e = this._displayEntity(this._hass?.states?.[c.entity]), a = e?.attributes || {};
     const unavailable = !e || !valid(e.state);
     const active = !unavailable && isClimateActive(e);
     const currentValue = numeric(a.current_temperature);
@@ -287,7 +290,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     const locale = this._hass?.locale?.language;
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
-       ha-card{border:1px solid var(--divider-color);border-radius:var(--bubble-border-radius,18px);background:var(--ha-card-background,var(--card-background-color));padding:8px 10px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden}
+       ha-card{border:1px solid var(--divider-color);border-radius:var(--bubble-border-radius,18px);background:var(--ha-card-background,var(--card-background-color));padding:8px 10px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden;cursor:pointer}ha-card:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
        .row{display:flex;align-items:center;gap:10px;min-width:0}
       .icon{width:40px;height:40px;flex:0 0 40px;border-radius:50%;display:grid;place-items:center;background:var(--secondary-background-color);color:var(--secondary-text-color);border:1px solid var(--divider-color)}
       .icon[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff);border-color:transparent}
@@ -315,8 +318,9 @@ export class BubbleClimateCard extends HTMLElementBase {
        .schedule{display:grid;place-items:center;flex:0 0 auto;padding:8px 11px;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;cursor:pointer}
        .schedule:hover{background:var(--divider-color)}.schedule:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.schedule ha-icon{--mdc-icon-size:18px;display:block}
         @media(max-width:420px){ha-card{padding:7px 8px}.row{gap:7px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 8px}.controls button{padding:6px 7px;font-size:13px}.controls .setpoint{min-width:48px}.schedule{padding:6px 8px}}
-     </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div></ha-card>`;
+     </style><ha-card tabindex="0" role="group" aria-label="Tap card background to toggle heating"><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div></ha-card>`;
     const root = this.shadowRoot;
+    this._bindCardToggle(root.querySelector('ha-card'));
     const icon = root.querySelector('.icon');
     icon.dataset.active = active ? 'true' : 'false';
     root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
@@ -384,7 +388,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     }
   }
   _renderCompact() {
-    const c = this.config, e = this._hass?.states?.[c.entity], a = e?.attributes || {};
+    const c = this.config, e = this._displayEntity(this._hass?.states?.[c.entity]), a = e?.attributes || {};
     const unavailable = !e || !valid(e.state);
     const currentValue = numeric(a.current_temperature);
     const model = targetModel(e);
@@ -397,7 +401,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     const step = effectiveStep(e, c.step);
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
-      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:8px 12px;box-sizing:border-box;min-height:88px;display:grid;grid-template-rows:36px 36px;gap:4px;overflow:hidden}
+      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:8px 12px;box-sizing:border-box;min-height:88px;display:grid;grid-template-rows:36px 36px;gap:4px;overflow:hidden;cursor:pointer}ha-card:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
       .head,.body{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden}
       .body{overflow-x:auto;overflow-y:hidden}
       .icon{width:32px;height:32px;flex:0 0 32px;border-radius:50%;display:grid;place-items:center;background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
@@ -408,9 +412,10 @@ export class BubbleClimateCard extends HTMLElementBase {
       button{font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 11px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.selected{background:var(--primary-color);color:var(--text-primary-color,#fff)}
       select:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.badge{color:var(--error-color);font-size:11px;white-space:nowrap}.empty{color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis}
       @media(max-width:420px){ha-card{padding:7px 9px}.head,.body{gap:4px}.target{font-size:16px}.body button{padding:4px 5px;min-width:24px}.chip{max-width:62px}}
-    </style><ha-card><div class="head"><span class="icon"><ha-icon></ha-icon></span><span class="title"></span><span class="chips"></span><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div>
+    </style><ha-card tabindex="0" role="group" aria-label="Tap card background to toggle heating"><div class="head"><span class="icon"><ha-icon></ha-icon></span><span class="title"></span><span class="chips"></span><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div>
        <div class="body"></div></ha-card>`;
     const root = this.shadowRoot;
+    this._bindCardToggle(root.querySelector('ha-card'));
     root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
     root.querySelector('.title').textContent = String(title);
     const chips = root.querySelector('.chips');
@@ -561,9 +566,23 @@ export class BubbleClimateCard extends HTMLElementBase {
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); this._closeSchedule(dialog); }); this.shadowRoot.append(dialog);
     if (this._scheduleOpen) dialog.showModal();
   }
+  _displayEntity(entity) {
+    const o=this._optimistic; if (!entity || !o || o.entityId!==this.config?.entity) return entity;
+    return {...entity, attributes:{...entity.attributes,...o.payload}};
+  }
+  _reconcileOptimistic() {
+    const o=this._optimistic, actual=this._hass?.states?.[this.config?.entity]; if (!o || !actual) return;
+    const keys=Object.keys(o.payload), confirmed=keys.every(k=>numeric(actual.attributes?.[k])===numeric(o.payload[k]));
+    if (confirmed || actual.state==='unknown' || actual.state==='unavailable') { clearTimeout(this._optimisticTimer); this._optimisticTimer=null; this._optimistic=null; }
+  }
+  _bindCardToggle(card) {
+    card.addEventListener('click', ev=>{ const path=ev.composedPath?.() || [ev.target]; if(path.some(node=>node!==card && node?.matches?.('button,input,select,textarea,a,[role="slider"],[role="button"],[role="group"]'))) return; const e=this._hass?.states?.[this.config.entity], mode=hvacToggleMode(e); if(mode) this._service('climate','set_hvac_mode',{entity_id:this.config.entity,hvac_mode:mode}); });
+    card.addEventListener('keydown', ev=>{ if((ev.key==='Enter'||ev.key===' ') && ev.target===card){ev.preventDefault();card.click();} });
+  }
   _setTemperature(value, entity) {
-    const payload = temperaturePayload(entity, value, this.config.step);
-    if (payload) this._service('climate', 'set_temperature', { entity_id: this.config.entity, ...payload });
+    const base=this._displayEntity(this._hass?.states?.[this.config.entity] || entity);
+    const payload = temperaturePayload(base, value, this.config.step);
+    if (payload) { clearTimeout(this._optimisticTimer); this._optimistic={entityId:this.config.entity,payload}; this._render(); this._optimisticTimer=setTimeout(()=>{this._optimistic=null;this._optimisticTimer=null;this._render();},8000); const seq=this._optimistic; Promise.resolve().then(()=>this._hass?.callService('climate','set_temperature',{entity_id:this.config.entity,...payload})).catch(()=>{if(this._optimistic===seq){clearTimeout(this._optimisticTimer);this._optimistic=null;this._render();}}); }
   }
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.9
+
+- Toggle between `heat` and `off` by tapping a non-interactive card area or pressing Enter/Space, only when both modes are supported; child controls do not trigger the toggle.
+- Show the requested target optimistically immediately when using +/- controls in `bubble` and `compact` layouts, then reconcile with Home Assistant or roll back on error/timeout.
+- Send compact slider targets when the change is committed.
+- No backend changes.
+
 ## v0.1.8
 
 - Rename the default horizontal layout to `bubble`; the legacy `row` value remains supported as an alias, and `compact` is unchanged.

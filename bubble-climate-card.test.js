@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, hvacToggleMode, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -530,4 +530,38 @@ test('cancel clears a pending poll before it runs', (t) => {
   cancel();
   assert.equal(timers.cleared.length, 1);
   assert.equal(warnings.length, 0);
+});
+
+test('HVAC card toggle only requests supported heat/off modes', () => {
+ assert.equal(hvacToggleMode({state:'off',attributes:{hvac_modes:['off','heat']}}),'heat');
+ assert.equal(hvacToggleMode({state:'heat',attributes:{hvac_modes:['off','heat']}}),'off');
+ assert.equal(hvacToggleMode({state:'off',attributes:{hvac_modes:['off']}}),null);
+ assert.equal(hvacToggleMode({state:'heat',attributes:{hvac_modes:['heat']}}),null);
+ assert.equal(hvacToggleMode({state:'unavailable',attributes:{hvac_modes:['heat','off']}}),null);
+ assert.equal(hvacToggleMode({state:'unknown',attributes:{hvac_modes:['heat','off']}}),null);
+});
+
+test('card tap excludes controls and target updates optimistically with service rerender', () => {
+ const source=readFileSync(new URL('./bubble-climate-card.js', import.meta.url),'utf8');
+ assert.match(source,/role="group" aria-label="Tap card background to toggle heating"/);
+ assert.doesNotMatch(source,/ha-card tabindex="0" role="button"/);
+ assert.match(source,/path\.some\(node=>node!==card[\s\S]*?node\?\.matches\?\.\('button,input,select,textarea,a,\[role="slider"\],\[role="button"\],\[role="group"\]'\)/);
+ assert.match(source,/node!==card && node\?\.matches\?\./);
+ assert.match(source,/ev\.key==='Enter'\|\|ev\.key===' '/);
+ assert.match(source,/\.slider'\)\?\.addEventListener\('change'/);
+ assert.doesNotMatch(source,/\.slider'\)\?\.addEventListener\('input',[^;]*_setTemperature/);
+ assert.match(source,/this\._optimistic=\{entityId:this\.config\.entity,payload\}/);
+ assert.match(source,/this\._render\(\); this\._optimisticTimer=setTimeout/);
+ assert.match(source,/Promise\.resolve\(\)\.then\(\(\)=>this\._hass\?\.callService\('climate','set_temperature'/);
+ assert.match(source,/if\(this\._optimistic===seq\)\{clearTimeout\(this\._optimisticTimer\);this\._optimistic=null;this\._render\(\);\}/);
+ assert.match(source,/catch\(\(\)=>/);
+});
+
+test('optimistic target model uses the service payload for single and dual targets', () => {
+ const single={state:'heat',attributes:{temperature:20,min_temp:5,max_temp:30,target_temp_step:1}};
+ const payload=temperaturePayload(single,22,0.5); assert.deepEqual(payload,{temperature:22});
+ assert.equal(targetModel({...single,attributes:{...single.attributes,...payload}}).value,22);
+ const dual={state:'heat_cool',attributes:{target_temp_low:18,target_temp_high:22,min_temp:5,max_temp:30,target_temp_step:1}};
+ const dualPayload=temperaturePayload(dual,23,0.5); assert.deepEqual(dualPayload,{target_temp_low:19,target_temp_high:23});
+ assert.deepEqual([targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).low,targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).high],[19,23]);
 });

@@ -42,7 +42,7 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-**Version note:** the current release is [`v0.1.8`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.8); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+**Version note:** the current release is [`v0.1.9`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.9); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
 ### HACS
 
@@ -104,6 +104,8 @@ The integration serves and registers the bundled frontend JavaScript. No manual 
 ## Layout anatomy
 
 The default `bubble` layout shows a compact horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with status and relative time beneath it, the current-temperature chip when enabled, and a single grouped control pill — decrease, target setpoint, increase. The calendar is a separate, standalone pill (not part of the temperature group) and is visible by default; set `show_schedule_button: false` to hide it.
+
+Tap an unused area of the card to toggle heating between `heat` and `off` only when both modes are supported. You can also focus the card and press Enter or Space. Interactive child controls (including temperature controls, the schedule button, and compact-layout inputs) do not trigger the card toggle. The target display updates immediately after using the +/- controls in the `bubble` and `compact` layouts; if the service fails or Home Assistant does not confirm the requested target within a short timeout, the display reverts to the Home Assistant value. The compact slider sends its target when the change is committed, not continuously while dragging.
 
 Existing Lovelace configurations that explicitly saved `show_schedule_button: false` continue to hide the calendar; remove that option or set it to `true` to show the default pill.
 

@@ -291,19 +291,19 @@ export class BubbleClimateCard extends HTMLElementBase {
       .meta{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
       .title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .status{font-size:12px;color:var(--secondary-text-color);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 9px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
-      .current ha-icon{--mdc-icon-size:14px;display:block}
+      .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
+      .current ha-icon{--mdc-icon-size:15px;display:block;color:var(--secondary-text-color)}
       .current span{white-space:nowrap}
       .row [hidden]{display:none!important}
-      .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:2px;background:var(--secondary-background-color);border-radius:999px;padding:2px;max-width:100%;overflow-x:auto;overflow-y:hidden}
-      .controls button{font:inherit;color:var(--primary-text-color);background:transparent;border:0;border-radius:999px;padding:7px 10px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+      .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;background:transparent;padding:0;max-width:100%;overflow-x:auto;overflow-y:hidden}
+      .controls button{font:inherit;font-size:14px;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:8px 13px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
       .controls button:hover{background:var(--divider-color)}
       .controls button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
-      .controls button:disabled{opacity:.45;cursor:default}
+      .controls button:disabled{opacity:.45;cursor:default;background:var(--secondary-background-color)}
       .controls .setpoint{font-weight:600;min-width:62px;text-align:center}
-      .controls .schedule{display:grid;place-items:center;padding:7px 9px}
+      .controls .schedule{display:grid;place-items:center;padding:8px 11px}
       .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
-      @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:4px 7px}.controls button{padding:6px 8px}.controls .setpoint{min-width:54px}}
+      @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 9px}.controls{gap:6px}.controls button{padding:6px 9px;font-size:13px}.controls .setpoint{min-width:54px}.controls .schedule{padding:6px 8px}}
       dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:16px;width:min(560px,calc(100vw - 40px));max-height:85vh;overflow:auto}dialog::backdrop{background:#0008}.slot{border-top:1px solid var(--divider-color);padding:12px 0}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.days{display:flex;gap:8px;flex-wrap:wrap}.error{color:var(--error-color)}
     </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div></div></ha-card>`;
     const root = this.shadowRoot;

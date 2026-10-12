@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.6
+
+- Match the referenced card screenshot: the row current-temperature chip is tinted with the accent color while the climate entity is active (icon follows the text color), and the target setpoint renders as borderless text between the minus and plus pills.
+- Keep minus, plus, and the calendar button as independent rounded pills.
+- Redesign the weekly schedule editor dialog with a premium look: sticky header with accent calendar icon, entity subtitle, and close button; a status pill with next change and active slot; a toggle switch for Enabled; rounded slot cards with uppercase titles and a remove action; accent-filled single-letter day pills; bordered time/target fields; and a Save/Delete action bar. The dialog carries its own styles instead of duplicating them in both card layouts.
+
 ## v0.1.5
 
 - Restyle the `row` layout control cluster to match the Bubble Card look: decrease, target setpoint, increase, and the schedule calendar button are now independent rounded pills with a gap instead of one fused background bar.

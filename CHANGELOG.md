@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.2 (Unreleased)
+## v0.1.2
 
 - Introduce a compact, fixed two-row premium layout.
 - Use a 0.5°C temperature step fallback; the climate entity's `target_temp_step` takes precedence when declared.

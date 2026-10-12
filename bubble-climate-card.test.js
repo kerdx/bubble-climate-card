@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BubbleClimateCard, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion } from './bubble-climate-card.js';
+import { BubbleClimateCard, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -44,6 +44,21 @@ test('target is bounded and rounded to entity step', () => {
   assert.equal(clampTarget(null, entity), null);
   assert.equal(clampTarget(20, { attributes: { min_temp: null, max_temp: 30, target_temp_step: 0.5 } }), null);
   assert.equal(clampTarget(20, { attributes: { min_temp: 5, max_temp: 30, target_temp_step: 0 } }), null);
+});
+
+test('effective step prefers a valid entity step and otherwise uses fallback', () => {
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 0.5 } }), 0.5);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 1 } }, 0.5), 1);
+  assert.equal(effectiveStep({ attributes: {} }), 0.5);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: null } }, 0.25), 0.25);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 'unavailable' } }, 0.25), 0.25);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 0 } }, 0.25), null);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: -1 } }, 0.25), null);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 'invalid' } }, 0.25), null);
+  assert.equal(clampTarget(21.4, { attributes: { min_temp: 10, max_temp: 30, target_temp_step: 0 } }, 0.5), null);
+  assert.equal(temperaturePayload({ state: 'heat', attributes: { min_temp: 10, max_temp: 30, temperature: 21, target_temp_step: 'invalid' } }, 21, 0.5), null);
+  assert.equal(clampTarget(21.4, { attributes: { min_temp: 10, max_temp: 30, target_temp_step: 1 } }, 0.5), 21);
+  assert.equal(clampTarget(21.4, { attributes: { min_temp: 10, max_temp: 30 } }, 0.5), 21.5);
 });
 
 test('heat_cool model and payload use dual targets and preserve their gap', () => {

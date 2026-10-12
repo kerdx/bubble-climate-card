@@ -17,7 +17,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(manifest["domain"], "bubble_climate_scheduler")
         self.assertEqual(hacs["homeassistant"], "2025.1.0")
         self.assertNotIn("category", hacs)
-        self.assertEqual(manifest["version"], "0.1.1")
+        self.assertEqual(manifest["version"], "0.1.2")
         self.assertEqual(manifest["issue_tracker"], "https://github.com/kerdx/bubble-climate-card/issues")
         self.assertTrue(manifest["config_flow"])
         self.assertTrue(manifest["single_config_entry"])

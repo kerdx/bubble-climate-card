@@ -4,6 +4,15 @@ export const numeric = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 export const modeLabel = (mode) => ({ heat: 'Heat', cool: 'Cool', off: 'Off', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' }[mode] || String(mode ?? '').replaceAll('_', ' '));
+export const effectiveStep = (entity, fallback = 0.5) => {
+  const attributes = entity?.attributes || {};
+  const raw = attributes.target_temp_step;
+  if (raw !== undefined && raw !== null && !(typeof raw === 'string' && ['unknown', 'unavailable'].includes(raw.trim().toLowerCase()))) {
+    const declared = numeric(raw);
+    return declared !== null && declared > 0 ? declared : null;
+  }
+  return numeric(fallback);
+};
 
 export const scheduleDraft = (program) => ({ enabled: Boolean(program?.enabled), slots: (Array.isArray(program?.slots) ? program.slots : []).map((slot) => ({
   id: String(slot.id ?? ''), days: Array.isArray(slot.days) ? slot.days.filter((day) => Number.isInteger(day) && day >= 1 && day <= 7) : [],
@@ -36,7 +45,7 @@ const validState = (state) => Boolean(state && !['unknown', 'unavailable'].inclu
 
 export const clampTarget = (value, entity, fallbackStep) => {
   const n = numeric(value), a = entity?.attributes || {}, min = numeric(a.min_temp), max = numeric(a.max_temp);
-  const increment = numeric(a.target_temp_step) ?? numeric(fallbackStep);
+  const increment = effectiveStep(entity, fallbackStep);
   if (n === null || min === null || max === null || min > max || increment === null || increment <= 0) return null;
   const scale = Math.max(1, Math.abs(min), Math.abs(max), Math.abs(increment));
   const tolerance = Number.EPSILON * scale * 8;
@@ -66,7 +75,7 @@ export const temperaturePayload = (entity, value, step) => {
     const low = numeric(attrs.target_temp_low), high = numeric(attrs.target_temp_high);
     const min = numeric(attrs.min_temp), max = numeric(attrs.max_temp);
     if (min === null || max === null || min > max || high - low > max - min) return null;
-    const increment = numeric(attrs.target_temp_step) ?? numeric(step);
+    const increment = effectiveStep(entity, step);
     if (increment === null || increment <= 0) return null;
     const delta = requested - (low + high) / 2;
     const minShiftIndex = Math.ceil((min - low) / increment - 1e-10);
@@ -155,19 +164,23 @@ export class BubbleClimateCard extends HTMLElementBase {
     const title = c.name || a.friendly_name || c.entity;
     const modeList = modes(e).filter((m) => valid(m));
     const hasTarget = !unavailable && model.available;
-    const step = numeric(a.target_temp_step) ?? numeric(c.step);
+    const step = effectiveStep(e, c.step);
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
-      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:14px 16px;box-sizing:border-box}
-      .head{display:flex;align-items:center;gap:10px}.icon{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
-      .icon ha-icon{--mdc-icon-size:22px}.title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.chips{display:flex;gap:5px;flex-wrap:wrap}.chip{font-size:12px;padding:4px 8px;border-radius:999px;background:var(--secondary-background-color);white-space:nowrap}
-      .temps{display:flex;align-items:baseline;gap:12px;margin:12px 0 4px}.current{font-size:22px;font-weight:600}.target{font-size:15px;color:var(--secondary-text-color)}.target strong{font-size:24px;color:var(--primary-text-color)}
-      input[type=range]{width:100%;accent-color:var(--primary-color);margin:8px 0}.controls,.modes{display:flex;align-items:center;gap:7px}.controls{justify-content:center}.modes{overflow:auto;margin-top:9px}
+      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:8px 12px;box-sizing:border-box;min-height:88px;display:grid;grid-template-rows:36px 36px;gap:4px;overflow:hidden}
+      .head,.body{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden}
+      .body{overflow-x:auto;overflow-y:hidden}
+      .icon{width:32px;height:32px;flex:0 0 32px;border-radius:50%;display:grid;place-items:center;background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+      .icon ha-icon{--mdc-icon-size:20px}.title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.chips{display:flex;gap:4px;flex:0 1 auto;min-width:0;overflow:hidden}.chip{font-size:11px;padding:4px 7px;border-radius:999px;background:var(--secondary-background-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px;flex:0 1 auto}
+      .target{font-size:20px;color:var(--primary-text-color);font-weight:600;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.target strong{font:inherit}
+      input[type=range]{width:auto;flex:1 0 45px;min-width:45px;accent-color:var(--primary-color);margin:0}
+      .body button{padding:5px 6px;min-width:28px;flex:0 0 auto}.body select{width:clamp(54px,22vw,104px);max-width:104px;min-width:54px;flex:0 0 clamp(54px,22vw,104px);overflow:hidden;text-overflow:ellipsis;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 5px}
       button{font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 11px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.selected{background:var(--primary-color);color:var(--text-primary-color,#fff)}
-      .badge{color:var(--error-color);font-size:13px}.empty{color:var(--secondary-text-color);padding-top:10px}
+      select:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.badge{color:var(--error-color);font-size:11px;white-space:nowrap}.empty{color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis}
+      @media(max-width:420px){ha-card{padding:7px 9px}.head,.body{gap:4px}.target{font-size:16px}.body button{padding:4px 5px;min-width:24px}.chip{max-width:62px}}
       dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:16px;width:min(560px,calc(100vw - 40px));max-height:85vh;overflow:auto}dialog::backdrop{background:#0008}.slot{border-top:1px solid var(--divider-color);padding:12px 0}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.days{display:flex;gap:8px;flex-wrap:wrap}.error{color:var(--error-color)}
     </style><ha-card><div class="head"><span class="icon"><ha-icon></ha-icon></span><span class="title"></span><span class="chips"></span><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div>
-      <div class="body"></div></ha-card>`;
+       <div class="body"></div></ha-card>`;
     const root = this.shadowRoot;
     root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
     root.querySelector('.title').textContent = String(title);
@@ -180,26 +193,32 @@ export class BubbleClimateCard extends HTMLElementBase {
     const schedule = root.querySelector('.schedule');
     schedule.hidden = !c.show_schedule_button;
     const body = root.querySelector('.body');
-    if (unavailable) body.textContent = 'Entity unavailable';
+    if (unavailable) { const message=document.createElement('span'); message.className='empty'; message.textContent='Entity unavailable'; body.append(message); }
     else {
-      const temps=document.createElement('div'); temps.className='temps';
-      const now=document.createElement('span'); now.className='current'; now.textContent=current;
       const targetText=document.createElement('span'); targetText.className='target'; targetText.textContent=hasTarget ? '' : 'Target unavailable';
       if (hasTarget) {
-        if (model.dual) targetText.textContent=`Target ${model.low}${unit}–${model.high}${unit}`;
-        else { targetText.append('Target '); const strong=document.createElement('strong'); strong.textContent=`${target}${unit}`; targetText.append(strong); }
+        targetText.title = model.dual ? `Target temperature range ${model.low} to ${model.high}${unit}` : `Target ${target}${unit}`;
+        const value=document.createElement('strong');
+        if (model.dual) {
+          value.textContent=`${model.low}–${model.high}${unit}`;
+          targetText.setAttribute('aria-label', `Target temperature range ${model.low} to ${model.high}${unit}`);
+        } else {
+          value.textContent=`${target}${unit}`;
+          targetText.setAttribute('aria-label', `Target ${target}${unit}`);
+        }
+        targetText.append(value);
       }
-      temps.append(now,targetText); body.append(temps);
+      body.append(targetText);
       if (hasTarget && model.controllable && step !== null && step > 0) {
-        const slider=document.createElement('input'); slider.className='slider'; slider.type='range'; slider.setAttribute('aria-label',model.dual?'Target temperature range midpoint':'Target temperature');
-        slider.min=String(model.sliderMin); slider.max=String(model.sliderMax); slider.step=String(step); slider.value=String(target); body.append(slider);
-        if (c.show_step_controls) { const controls=document.createElement('div'); controls.className='controls'; for (const [d,label,text] of [[-step,'Decrease target temperature','−'],[step,'Increase target temperature','+']]) { const button=document.createElement('button'); button.dataset.delta=String(d); button.setAttribute('aria-label',label); button.textContent=text; controls.append(button); } body.append(controls); }
+         if (c.show_step_controls) for (const [d,label,text] of [[-step,'Decrease target temperature','−'],[step,'Increase target temperature','+']]) { const button=document.createElement('button'); button.dataset.delta=String(d); button.setAttribute('aria-label',label); button.textContent=text; body.append(button); }
+         const slider=document.createElement('input'); slider.className='slider'; slider.type='range'; slider.setAttribute('aria-label',model.dual?'Target temperature range midpoint':'Target temperature');
+         slider.min=String(model.sliderMin); slider.max=String(model.sliderMax); slider.step=String(step); slider.value=String(target); body.append(slider);
       }
-      if (c.show_mode_buttons && modeList.length) { const group=document.createElement('div'); group.className='modes'; group.setAttribute('role','group'); group.setAttribute('aria-label','HVAC mode'); for (const m of modeList) { const button=document.createElement('button'); button.dataset.mode=String(m); button.classList.toggle('selected',e.state===m); button.setAttribute('aria-pressed',String(e.state===m)); button.setAttribute('aria-label',`Set ${modeLabel(m)} mode`); button.textContent=modeLabel(m); group.append(button); } body.append(group); }
+      if (c.show_mode_buttons && modeList.length) { const select=document.createElement('select'); select.setAttribute('aria-label','HVAC mode'); for(const m of modeList){const option=document.createElement('option');option.value=String(m);option.textContent=modeLabel(m);select.append(option)} select.value=modeList.includes(e.state)?e.state:modeList[0]; body.append(select); }
     }
     this.shadowRoot.querySelector('.slider')?.addEventListener('change', (ev) => this._setTemperature(ev.target.value, e));
     root.querySelectorAll('[data-delta]').forEach((b) => b.addEventListener('click', () => this._setTemperature(target + Number(b.dataset.delta), e)));
-    root.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { if (!unavailable && modes(e).includes(b.dataset.mode)) this._service('climate', 'set_hvac_mode', { entity_id: c.entity, hvac_mode: b.dataset.mode }); }));
+    root.querySelector('select[aria-label="HVAC mode"]')?.addEventListener('change', (ev) => { if (!unavailable && modes(e).includes(ev.target.value)) this._service('climate', 'set_hvac_mode', { entity_id: c.entity, hvac_mode: ev.target.value }); });
     schedule.addEventListener('click', () => this._openSchedule());
   }
   _scheduleSensor() {

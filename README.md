@@ -18,6 +18,7 @@
 ## Features
 
 - Climate controls that follow the entity's available HVAC capabilities.
+- A compact two-row layout with an HVAC mode dropdown.
 - Weekly schedule editor opened from the calendar button.
 - Backend persistence and execution, independent of an open dashboard.
 - Visual card editor with a climate entity selector and entity suggestions.
@@ -58,6 +59,7 @@ show_unavailable_badge: false
 show_mode_buttons: true
 show_step_controls: true
 show_schedule_button: true
+step: 0.5
 ```
 
 The integration serves and registers the bundled frontend JavaScript. No manual resource, `schedule.*` helper, or webhook is required.
@@ -74,10 +76,12 @@ The integration serves and registers the bundled frontend JavaScript. No manual 
 | `show_current_temperature_chip` | `true` | Show the measured temperature chip. |
 | `show_humidity_chip` | `false` | Show the humidity chip when available. |
 | `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
-| `show_mode_buttons` | `true` | Show buttons for modes exposed by the entity. |
+| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity. |
 | `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
 | `show_schedule_button` | `true` | Show the button that opens the weekly schedule editor. |
-| `step` | `0.5` | Temperature increment for the step controls. |
+| `step` | `0.5` | Fallback temperature increment used only when the climate entity's `target_temp_step` is missing, `unknown`, `unavailable`, or null. A declared invalid step (zero, negative, or non-numeric) disables target controls rather than substituting an unsupported increment. A valid entity step always takes precedence; for example, an entity step of `1` is not treated as `0.5`. |
+
+The card uses a fixed two-row layout: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained.
 
 ## Weekly schedule
 
@@ -95,10 +99,10 @@ The climate card's manual controls are separate from scheduling and should respe
 
 ## Verification status
 
-The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The `v0.1.1` verification record covers 21 Python unit tests, `compileall`, and JSON/YAML plus packaged-JavaScript synchronization checks. JavaScript tests were not run (Node.js unavailable). Home Assistant and browser behavior has not been verified in a live environment. The schedule editor labels are currently in English.
+The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The `v0.1.2` verification checks are performed by the release coordinator: 21 Python unit tests and `compileall`. Node.js is unavailable, so JavaScript tests are not run. Live Home Assistant/browser behavior and the layout have not been visually verified. The schedule editor labels are currently in English.
 
 ## Support and releases
 
 - [Report a bug or request a feature](https://github.com/kerdx/bubble-climate-card/issues)
-- [Release v0.1.1](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.1) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
+- [Release v0.1.2](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.2) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
 - [MIT license](LICENSE)

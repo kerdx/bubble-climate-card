@@ -42,7 +42,7 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-**Version note:** the current release is [`v0.1.7`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.7). HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+**Version note:** the current release is [`v0.1.7`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.7); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
 ### HACS
 

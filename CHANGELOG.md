@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.8
+
+- Rename the default horizontal layout to `bubble`; the legacy `row` value remains supported as an alias, and `compact` is unchanged.
+- Show the calendar button by default as a standalone pill, separate from the temperature control group; set `show_schedule_button: false` to hide it. Existing configurations that explicitly saved `false` continue to hide it and must be changed explicitly to show the button.
+- No backend changes.
+
 ## v0.1.7
 
 - Refine the `row` layout to more faithfully match the reference screenshot, with decrease, target setpoint, and increase grouped in one control pill and consistent spacing before temperature units.

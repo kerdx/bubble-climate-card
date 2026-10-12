@@ -30,7 +30,7 @@
 ## Features
 
 - Climate controls that follow the entity's available HVAC capabilities.
-- A horizontal entity-row layout by default, with the previous two-row layout still available as `compact`.
+- A horizontal `bubble` layout by default, with the previous two-row layout still available as `compact`.
 - Weekly schedule editor opened from the calendar button.
 - Backend persistence and execution, independent of an open dashboard.
 - Visual card editor with a climate entity selector and entity suggestions.
@@ -42,7 +42,7 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-**Version note:** the current release is [`v0.1.7`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.7); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+**Version note:** the current release is [`v0.1.8`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.8); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
 ### HACS
 
@@ -68,19 +68,19 @@ type: custom:bubble-climate-card
 entity: climate.living_room
 name: Living Room
 icon: mdi:thermostat
-layout: row
+layout: bubble
 show_state_chip: false
 show_current_temperature_chip: true
 show_humidity_chip: false
 show_unavailable_badge: false
 show_step_controls: true
-show_schedule_button: false
+show_schedule_button: true
 step: 0.5
 ```
 
-`layout: compact` keeps the previous two-row card with the HVAC mode dropdown and temperature slider.
+`layout: compact` keeps the previous two-row card with the HVAC mode dropdown and temperature slider. Legacy `layout: row` remains supported as an alias for `bubble`.
 
-Migration note: in v0.1.3 the visual editor's config stub saved `layout: compact`, so cards created then may contain that key and keep the previous appearance (not every saved card is necessarily affected). To get the new horizontal row look in such configs, set `layout: row` or remove the `layout` key; new cards and assets without an explicit layout use `row`. The `compact` choice remains available.
+Migration note: in v0.1.3 the visual editor's config stub saved `layout: compact`, so cards created then may contain that key and keep the previous appearance (not every saved card is necessarily affected). To get the new horizontal bubble look in such configs, set `layout: bubble` (or legacy `layout: row`) or remove the `layout` key; new cards and assets without an explicit layout use `bubble`. The `compact` choice remains available.
 
 The integration serves and registers the bundled frontend JavaScript. No manual resource, `schedule.*` helper, or webhook is required.
 
@@ -91,27 +91,29 @@ The integration serves and registers the bundled frontend JavaScript. No manual 
 | `entity` | — | Climate entity to control. Required. |
 | `name` | Entity name | Optional card title. |
 | `icon` | Entity icon | Optional icon override. |
-| `layout` | `row` | Card layout: `row` (default horizontal entity row) or `compact` (previous two-row layout). Unknown values are rejected. |
+| `layout` | `bubble` | Card layout: `bubble` (default horizontal layout; legacy `row` is an alias) or `compact` (previous two-row layout). Unknown values are rejected. |
 | `show_state_chip` | `true` | Show the HVAC state and relative time in the row status line. Humidity is governed separately by `show_humidity_chip`. |
 | `show_current_temperature_chip` | `true` | Show the measured temperature chip. |
 | `show_humidity_chip` | `false` | Show the humidity in the row status line when available, even when `show_state_chip` is `false`. |
 | `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
-| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity (`compact` layout only; in `row` there is no inline mode menu and modes are changed from the entity details opened by the setpoint). |
+| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity (`compact` layout only; in `bubble` there is no inline mode menu and modes are changed from the entity details opened by the setpoint). |
 | `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
-| `show_schedule_button` | `false` | Show the button that opens the weekly schedule editor. |
+| `show_schedule_button` | `true` | Show the standalone calendar pill that opens the weekly schedule editor; set to `false` to hide it. |
 | `step` | `0.5` | Fallback temperature increment used only when the climate entity's `target_temp_step` is missing, `unknown`, `unavailable`, or null. A declared invalid step (zero, negative, or non-numeric) disables target controls rather than substituting an unsupported increment. A valid entity step always takes precedence; for example, an entity step of `1` is not treated as `0.5`. |
 
 ## Layout anatomy
 
-The default `row` layout shows a compact horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with status and relative time beneath it, the current-temperature chip when enabled, and a single grouped control pill — decrease, target setpoint, increase. The calendar button is hidden by default and can be enabled with `show_schedule_button: true`.
+The default `bubble` layout shows a compact horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with status and relative time beneath it, the current-temperature chip when enabled, and a single grouped control pill — decrease, target setpoint, increase. The calendar is a separate, standalone pill (not part of the temperature group) and is visible by default; set `show_schedule_button: false` to hide it.
+
+Existing Lovelace configurations that explicitly saved `show_schedule_button: false` continue to hide the calendar; remove that option or set it to `true` to show the default pill.
 
 - The current-temperature chip pairs an `mdi:home-thermometer` house icon with the measured value and a space before the unit (for example `20,5 °C`); the chip carries `role="img"` with an accessible label while the house icon itself is decorative and hidden from assistive technology; the whole chip (icon included) is hidden when the option is off or the value is unavailable.
 - The status line prefers `hvac_action` (for example heating/cooling/off) and uses Home Assistant formatting/localization when available, falling back to a readable label; it also appends humidity when `show_humidity_chip` is enabled (independently of `show_state_chip`, using the same locale number formatting as temperatures) and a short relative time from `last_changed`/`last_updated` when `show_state_chip` is enabled.
-- The setpoint button opens the entity details (`hass-more-info`); minus/plus call `climate.set_temperature` through the existing step logic, and the calendar button opens the same weekly schedule editor.
-- Names/status give up width first and truncate with ellipses; the status and relative time remain separated by a visible bullet. Controls remain grouped on one line and scroll horizontally only when their full width does not fit, keeping every control (including an opt-in calendar button) reachable without horizontal overflow of the card.
+- The setpoint button opens the entity details (`hass-more-info`); minus/plus call `climate.set_temperature` through the existing step logic, and the separate calendar pill opens the same weekly schedule editor.
+- Names/status give up width first and truncate with ellipses; the status and relative time remain separated by a visible bullet. Temperature controls remain grouped on one line and scroll horizontally only when their full width does not fit; the separate calendar pill is outside that scroller.
 - Colors follow the active Home Assistant theme; no dark-only palette is hardcoded.
 
-The `compact` layout keeps the previous fixed two-row card: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained. In `row`, the HVAC mode dropdown is not rendered; modes remain changeable from the entity details opened by the setpoint, and `compact` keeps the inline dropdown.
+The `compact` layout keeps the previous fixed two-row card: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained. In `bubble`, the HVAC mode dropdown is not rendered; modes remain changeable from the entity details opened by the setpoint, and `compact` keeps the inline dropdown.
 
 ## Weekly schedule
 

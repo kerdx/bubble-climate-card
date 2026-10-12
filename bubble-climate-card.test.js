@@ -21,11 +21,11 @@ test('editor schema exposes climate entity and all supported visual options', ()
   assert.deepEqual(configSchema[0].selector.entity, { filter: { domain: ['climate'] } });
   const fields = configSchema.map((field) => field.name);
   for (const name of ['entity', 'name', 'icon', 'layout', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
-  assert.deepEqual(configSchema.find((field) => field.name === 'layout').selector, { select: { mode: 'dropdown', options: ['row', 'compact'] } });
+  assert.deepEqual(configSchema.find((field) => field.name === 'layout').selector, { select: { mode: 'dropdown', options: ['bubble', 'compact'] } });
   assert.deepEqual(defaultCardConfig('climate.living_room'), {
-    entity: 'climate.living_room', layout: 'row', step: 0.5,
+    entity: 'climate.living_room', layout: 'bubble', step: 0.5,
     show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-     show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false,
+      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
   });
   assert.equal(typeof BubbleClimateCard.getStubConfig, 'function');
   assert.equal(typeof BubbleClimateCard.getConfigElement, 'function');
@@ -121,16 +121,24 @@ test('schedule draft conversion and validation', () => {
   assert.ok(validateScheduleDraft({ slots: [{ ...draft.slots[0], temperature: '' }] }));
 });
 
-test('row is the default layout and only row or compact normalize', () => {
-  assert.equal(normalizeLayout(undefined), 'row');
-  assert.equal(normalizeLayout(null), 'row');
-  assert.equal(normalizeLayout(''), 'row');
-  assert.equal(normalizeLayout('row'), 'row');
+test('bubble is the default layout and row remains a legacy alias', () => {
+  assert.equal(normalizeLayout(undefined), 'bubble');
+  assert.equal(normalizeLayout(null), 'bubble');
+  assert.equal(normalizeLayout(''), 'bubble');
+  assert.equal(normalizeLayout('row'), 'bubble');
+  assert.equal(normalizeLayout('bubble'), 'bubble');
   assert.equal(normalizeLayout('compact'), 'compact');
   assert.equal(normalizeLayout('tall'), null);
-  assert.equal(defaultCardConfig('climate.living_room').layout, 'row');
-  assert.equal(BubbleClimateCard.getStubConfig({ states: {} }).layout, 'row');
-  assert.equal(getEntitySuggestion({}, 'climate.living_room').layout, 'row');
+  assert.equal(defaultCardConfig('climate.living_room').layout, 'bubble');
+  assert.equal(BubbleClimateCard.getStubConfig({ states: {} }).layout, 'bubble');
+  assert.equal(getEntitySuggestion({}, 'climate.living_room').layout, 'bubble');
+});
+
+test('bubble schedule pill is a sibling of temperature controls in markup', () => {
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const bubbleSection = source.slice(source.indexOf('  _renderRow() {'), source.indexOf('  _renderCompact() {'));
+  assert.match(bubbleSection, /<div class="controls"><\/div><button class="schedule"/);
+  assert.doesNotMatch(bubbleSection, /controls\.append\(schedule\)/);
 });
 
 test('climate active state distinguishes running modes from off and unavailable', () => {

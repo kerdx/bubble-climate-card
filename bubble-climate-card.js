@@ -91,8 +91,8 @@ export const temperaturePayload = (entity, value, step) => {
 
 const valid = (v) => v !== undefined && v !== null && v !== '' && v !== 'unknown' && v !== 'unavailable';
 export const normalizeLayout = (value) => {
-  if (value === undefined || value === null || value === '') return 'row';
-  return value === 'row' || value === 'compact' ? value : null;
+  if (value === undefined || value === null || value === '') return 'bubble';
+  return value === 'row' || value === 'bubble' ? 'bubble' : value === 'compact' ? 'compact' : null;
 };
 export const isClimateActive = (entityOrState) => {
   const state = typeof entityOrState === 'string' ? entityOrState : entityOrState?.state;
@@ -179,9 +179,9 @@ const modes = (entity) => Array.isArray(entity?.attributes?.hvac_modes) ? entity
 const HTMLElementBase = globalThis.HTMLElement ?? class {};
 
 export const defaultCardConfig = (entity = 'climate.example') => ({
-  entity, layout: 'row', step: 0.5,
+  entity, layout: 'bubble', step: 0.5,
   show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-   show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false,
+    show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
 });
 export const getEntitySuggestion = (_hass, entityId) => typeof entityId === 'string' && entityId.startsWith('climate.')
   ? { type: 'custom:bubble-climate-card', ...defaultCardConfig(entityId) }
@@ -191,7 +191,7 @@ export const configSchema = [
   { name: 'entity', required: true, selector: { entity: { filter: { domain: ['climate'] } } } },
   { name: 'name', selector: { text: {} } },
   { name: 'icon', selector: { icon: {} } },
-  { name: 'layout', selector: { select: { mode: 'dropdown', options: ['row', 'compact'] } } },
+  { name: 'layout', selector: { select: { mode: 'dropdown', options: ['bubble', 'compact'] } } },
   ...['show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button'].map((name) => ({ name, selector: { boolean: {} } })),
   { name: 'step', selector: { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } } },
 ];
@@ -199,7 +199,7 @@ export const configSchema = [
 export class BubbleClimateCardEditor extends HTMLElementBase {
   set hass(value) { this._hass = value; const form = this.shadowRoot?.querySelector('ha-form'); if (form) form.hass = value; }
   setConfig(config) {
-    this._config = { ...defaultCardConfig(config?.entity || 'climate.example'), ...config };
+    this._config = { ...defaultCardConfig(config?.entity || 'climate.example'), ...config, layout: normalizeLayout(config?.layout) || 'bubble' };
     this._render();
   }
   _render() {
@@ -228,10 +228,10 @@ export class BubbleClimateCard extends HTMLElementBase {
   setConfig(config) {
     if (!config?.entity || !/^climate\./.test(config.entity)) throw new Error('Specify a climate entity (climate.*).');
     const layout = normalizeLayout(config.layout);
-    if (!layout) throw new Error('Supported layouts are "row" and "compact".');
+    if (!layout) throw new Error('Supported layouts are "bubble" and "compact" (legacy alias: "row").');
     if (config.step !== undefined && (numeric(config.step) === null || numeric(config.step) <= 0)) throw new Error('step must be a number greater than zero.');
-    this.config = { layout: 'row', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false, step: 0.5, ...config, layout };
+    this.config = { layout: 'bubble', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
+      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true, step: 0.5, ...config, layout };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._render();
   }
@@ -266,7 +266,7 @@ export class BubbleClimateCard extends HTMLElementBase {
   _render() {
     if (!this.shadowRoot || !this.config) return;
     if (this._scheduleOpen && this.shadowRoot.querySelector('dialog[open]')) return;
-    if ((this.config.layout ?? 'row') === 'compact') this._renderCompact();
+    if ((this.config.layout ?? 'bubble') === 'compact') this._renderCompact();
     else this._renderRow();
   }
   _renderRow() {
@@ -312,10 +312,10 @@ export class BubbleClimateCard extends HTMLElementBase {
        .controls .setpoint{font-weight:600;min-width:58px;text-align:center;background:transparent;font-size:14px;padding:7px 2px}
       .controls .setpoint:hover{background:transparent}
       .controls .setpoint:focus-visible{outline-offset:0;border-radius:10px}
-      .controls .schedule{display:grid;place-items:center;padding:8px 11px}
-      .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
-       @media(max-width:420px){ha-card{padding:7px 8px}.row{gap:7px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 8px}.controls button{padding:6px 7px;font-size:13px}.controls .setpoint{min-width:48px}.controls .schedule{padding:6px 8px}}
-    </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div></div></ha-card>`;
+       .schedule{display:grid;place-items:center;flex:0 0 auto;padding:8px 11px;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;cursor:pointer}
+       .schedule:hover{background:var(--divider-color)}.schedule:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.schedule ha-icon{--mdc-icon-size:18px;display:block}
+        @media(max-width:420px){ha-card{padding:7px 8px}.row{gap:7px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 8px}.controls button{padding:6px 7px;font-size:13px}.controls .setpoint{min-width:48px}.schedule{padding:6px 8px}}
+     </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div></ha-card>`;
     const root = this.shadowRoot;
     const icon = root.querySelector('.icon');
     icon.dataset.active = active ? 'true' : 'false';
@@ -348,6 +348,9 @@ export class BubbleClimateCard extends HTMLElementBase {
       currentEl.setAttribute('aria-label', `Current temperature ${currentDisplay}`);
     } else currentEl.hidden = true;
     const controls = root.querySelector('.controls');
+    const schedule = root.querySelector('.schedule');
+    schedule.hidden = !c.show_schedule_button || unavailable;
+    schedule.addEventListener('click', () => this._openSchedule());
     controls.setAttribute('role', 'group');
     controls.setAttribute('aria-label', 'Temperature controls');
     controls.tabIndex = 0;
@@ -372,15 +375,6 @@ export class BubbleClimateCard extends HTMLElementBase {
       }
       controls.append(setpoint);
       if (c.show_step_controls && adjustable) { const plus = document.createElement('button'); plus.dataset.delta = String(step); plus.setAttribute('aria-label', 'Increase target temperature'); plus.textContent = '+'; controls.append(plus); }
-      if (c.show_schedule_button) {
-        const schedule = document.createElement('button');
-        schedule.className = 'schedule';
-        schedule.setAttribute('aria-label', 'Open schedule details');
-        schedule.title = 'Open schedule details';
-        schedule.innerHTML = '<ha-icon icon="mdi:calendar-clock"></ha-icon>';
-        controls.append(schedule);
-        schedule.addEventListener('click', () => this._openSchedule());
-      }
       if (!controls.children.length) controls.hidden = true;
       setpoint.addEventListener('click', () => {
         if (setpoint.disabled) return;

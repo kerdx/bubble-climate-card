@@ -18,7 +18,7 @@
 ## Features
 
 - Climate controls that follow the entity's available HVAC capabilities.
-- A compact two-row layout with an HVAC mode dropdown.
+- A horizontal entity-row layout by default, with the previous two-row layout still available as `compact`.
 - Weekly schedule editor opened from the calendar button.
 - Backend persistence and execution, independent of an open dashboard.
 - Visual card editor with a climate entity selector and entity suggestions.
@@ -29,7 +29,7 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-**Version note:** the current release is [`v0.1.3`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.3). HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+**Version note:** the current release is [`v0.1.4`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.4). HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
 ### HACS
 
@@ -53,16 +53,19 @@ type: custom:bubble-climate-card
 entity: climate.living_room
 name: Living Room
 icon: mdi:thermostat
-layout: compact
+layout: row
 show_state_chip: false
 show_current_temperature_chip: true
 show_humidity_chip: false
 show_unavailable_badge: false
-show_mode_buttons: true
 show_step_controls: true
 show_schedule_button: true
 step: 0.5
 ```
+
+`layout: compact` keeps the previous two-row card with the HVAC mode dropdown and temperature slider.
+
+Migration note: in v0.1.3 the visual editor's config stub saved `layout: compact`, so cards created then may contain that key and keep the previous appearance (not every saved card is necessarily affected). To get the new horizontal row look in such configs, set `layout: row` or remove the `layout` key; new cards and assets without an explicit layout use `row`. The `compact` choice remains available.
 
 The integration serves and registers the bundled frontend JavaScript. No manual resource, `schedule.*` helper, or webhook is required.
 
@@ -73,17 +76,19 @@ The integration serves and registers the bundled frontend JavaScript. No manual 
 | `entity` | — | Climate entity to control. Required. |
 | `name` | Entity name | Optional card title. |
 | `icon` | Entity icon | Optional icon override. |
-| `layout` | `compact` | Card layout. |
-| `show_state_chip` | `true` | Show the current HVAC mode chip. |
+| `layout` | `row` | Card layout: `row` (default horizontal entity row) or `compact` (previous two-row layout). Unknown values are rejected. |
+| `show_state_chip` | `true` | Show the HVAC state and relative time in the row status line. Humidity is governed separately by `show_humidity_chip`. |
 | `show_current_temperature_chip` | `true` | Show the measured temperature chip. |
-| `show_humidity_chip` | `false` | Show the humidity chip when available. |
+| `show_humidity_chip` | `false` | Show the humidity in the row status line when available, even when `show_state_chip` is `false`. |
 | `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
-| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity. |
+| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity (`compact` layout only; in `row` there is no inline mode menu and modes are changed from the entity details opened by the setpoint). |
 | `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
 | `show_schedule_button` | `true` | Show the button that opens the weekly schedule editor. |
 | `step` | `0.5` | Fallback temperature increment used only when the climate entity's `target_temp_step` is missing, `unknown`, `unavailable`, or null. A declared invalid step (zero, negative, or non-numeric) disables target controls rather than substituting an unsupported increment. A valid entity step always takes precedence; for example, an entity step of `1` is not treated as `0.5`. |
 
-The card uses a fixed two-row layout: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained.
+The default `row` layout shows a horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with a readable status line beneath it, the current-temperature chip when enabled, and a control cluster with decrease, target setpoint, increase, and the calendar button (hidden when `show_schedule_button` is `false`). The current-temperature chip pairs an `mdi:home-thermometer` house icon with the measured value in a text span; the chip carries `role="img"` with an accessible label while the house icon itself is decorative and hidden from assistive technology; the whole chip (icon included) is hidden when the option is off or the value is unavailable. The status line prefers `hvac_action` (for example heating/cooling/off) and uses Home Assistant formatting/localization when available, falling back to a readable label; it also appends humidity when `show_humidity_chip` is enabled (independently of `show_state_chip`, using the same locale number formatting as temperatures) and a short relative time from `last_changed`/`last_updated` when `show_state_chip` is enabled. The relative time uses `Intl.RelativeTimeFormat` with `hass.locale.language` (for example `43 secondi fa`, `1 minuto fa` in Italian) and falls back to short English (`just now`, `5 min ago`) when locale or `Intl` is unavailable. Row current/target numbers use `Intl.NumberFormat` with the same locale (for example `20,5` in Italian, up to 2 fraction digits); `compact` keeps the previous raw number rendering. The setpoint button opens the entity details (`hass-more-info`); minus/plus call `climate.set_temperature` through the existing step logic, and the calendar button opens the same weekly schedule editor. Names, status, and controls truncate without overflowing the card; on very narrow widths the control cluster is shrinkable with scrollable overflow, so it yields width instead of being clipped and the calendar button stays reachable. Colors follow the active Home Assistant theme; no dark-only palette is hardcoded.
+
+The `compact` layout keeps the previous fixed two-row card: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained. In `row`, the HVAC mode dropdown is not rendered; modes remain changeable from the entity details opened by the setpoint, and `compact` keeps the inline dropdown.
 
 ## Weekly schedule
 
@@ -101,7 +106,7 @@ The climate card's manual controls are separate from scheduling and should respe
 
 ## Verification status
 
-The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The current `main` branch passed 21 Python unit tests and `compileall`. Node.js is unavailable, so JavaScript tests were not run. Live Home Assistant/browser behavior and the layout have not been visually verified. The schedule editor labels are currently in English.
+The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later. The current `main` branch passed 27 JavaScript tests (`npm test`), 21 Python unit tests, and `compileall`. No Home Assistant/browser visual verification has been performed. The schedule editor labels are currently in English.
 
 ## Support and releases
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep } from './bubble-climate-card.js';
+import { readFileSync } from 'node:fs';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -10,9 +11,10 @@ test('module imports without browser DOM and exports the card class', () => {
 test('editor schema exposes climate entity and all supported visual options', () => {
   assert.deepEqual(configSchema[0].selector.entity, { filter: { domain: ['climate'] } });
   const fields = configSchema.map((field) => field.name);
-  for (const name of ['entity', 'name', 'icon', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
+  for (const name of ['entity', 'name', 'icon', 'layout', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
+  assert.deepEqual(configSchema.find((field) => field.name === 'layout').selector, { select: { mode: 'dropdown', options: ['row', 'compact'] } });
   assert.deepEqual(defaultCardConfig('climate.living_room'), {
-    entity: 'climate.living_room', layout: 'compact', step: 0.5,
+    entity: 'climate.living_room', layout: 'row', step: 0.5,
     show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
     show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
   });
@@ -106,8 +108,176 @@ test('schedule draft conversion and validation', () => {
   assert.match(validateScheduleDraft({ ...draft, enabled: 'true' }), /Invalid schedule/);
   assert.match(validateScheduleDraft({ enabled: true, slots: [] }), /needs at least one slot/);
   assert.equal(validateScheduleDraft({ enabled: false, slots: [] }), null);
-  assert.match(validateScheduleDraft({ slots: [{ ...draft.slots[0], end: '07:30' }] }), /start and end/);
+  assert.match(validateScheduleDraft({ enabled: false, slots: [{ ...draft.slots[0], end: '07:30' }] }), /start and end/);
   assert.ok(validateScheduleDraft({ slots: [{ ...draft.slots[0], temperature: '' }] }));
+});
+
+test('row is the default layout and only row or compact normalize', () => {
+  assert.equal(normalizeLayout(undefined), 'row');
+  assert.equal(normalizeLayout(null), 'row');
+  assert.equal(normalizeLayout(''), 'row');
+  assert.equal(normalizeLayout('row'), 'row');
+  assert.equal(normalizeLayout('compact'), 'compact');
+  assert.equal(normalizeLayout('tall'), null);
+  assert.equal(defaultCardConfig('climate.living_room').layout, 'row');
+  assert.equal(BubbleClimateCard.getStubConfig({ states: {} }).layout, 'row');
+  assert.equal(getEntitySuggestion({}, 'climate.living_room').layout, 'row');
+});
+
+test('climate active state distinguishes running modes from off and unavailable', () => {
+  assert.equal(isClimateActive({ state: 'heat' }), true);
+  assert.equal(isClimateActive({ state: 'cool' }), true);
+  assert.equal(isClimateActive('heat'), true);
+  assert.equal(isClimateActive({ state: 'off' }), false);
+  assert.equal(isClimateActive({ state: 'unavailable' }), false);
+  assert.equal(isClimateActive({ state: 'unknown' }), false);
+  assert.equal(isClimateActive({}), false);
+  assert.equal(isClimateActive(null), false);
+});
+
+test('status key prefers hvac_action and labels stay readable', () => {
+  assert.equal(climateStatusKey({ state: 'heat', attributes: { hvac_action: 'heating' } }), 'heating');
+  assert.equal(climateStatusKey({ state: 'heat', attributes: {} }), 'heat');
+  assert.equal(climateStatusKey({ state: 'off', attributes: { hvac_action: 'off' } }), 'off');
+  assert.equal(statusLabel('heating'), 'Heating');
+  assert.equal(statusLabel('cooling'), 'Cooling');
+  assert.equal(statusLabel('off'), 'Off');
+  assert.equal(statusLabel('heat_cool'), 'Heat / cool');
+  assert.equal(statusLabel('custom_mode'), 'Custom mode');
+  assert.equal(statusLabel(''), '');
+  assert.equal(statusLabel(null), '');
+});
+
+test('relative time uses last change before last update and stays short', () => {
+  const now = Date.parse('2026-10-12T12:00:00Z');
+  assert.equal(formatRelativeTime('2026-10-12T11:59:40Z', now), 'just now');
+  assert.equal(formatRelativeTime('2026-10-12T11:55:00Z', now), '5 min ago');
+  assert.equal(formatRelativeTime('2026-10-12T10:00:00Z', now), '2 h ago');
+  assert.equal(formatRelativeTime('2026-10-09T12:00:00Z', now), '3 d ago');
+  assert.equal(formatRelativeTime('not-a-date', now), '');
+  assert.equal(formatRelativeTime(null, now), '');
+  assert.equal(pickEntityTimestamp({ last_changed: '2026-10-12T11:00:00Z', last_updated: '2026-10-12T11:59:00Z' }), '2026-10-12T11:00:00Z');
+  assert.equal(pickEntityTimestamp({ last_updated: '2026-10-12T11:59:00Z' }), '2026-10-12T11:59:00Z');
+  assert.equal(pickEntityTimestamp({ last_changed: 'bad', last_updated: 'also-bad' }), null);
+  assert.equal(pickEntityTimestamp({}), null);
+});
+
+test('relative time localizes with hass locale through Intl', (t) => {
+  const now = Date.parse('2026-10-12T12:00:00Z');
+  const RealRtf = globalThis.Intl.RelativeTimeFormat;
+  const seen = [];
+  class FakeRtf {
+    constructor(locale, options) { seen.push([locale, options]); }
+    format(value, unit) {
+      const abs = Math.abs(value);
+      if (value === 0 && unit === 'second') return 'ora';
+      if (unit === 'second') return `${abs} secondi fa`;
+      if (unit === 'minute') return abs === 1 ? '1 minuto fa' : `${abs} minuti fa`;
+      if (unit === 'hour') return abs === 1 ? '1 ora fa' : `${abs} ore fa`;
+      return abs === 1 ? '1 giorno fa' : `${abs} giorni fa`;
+    }
+  }
+  globalThis.Intl.RelativeTimeFormat = FakeRtf;
+  t.after(() => { globalThis.Intl.RelativeTimeFormat = RealRtf; });
+  assert.equal(formatRelativeTime('2026-10-12T11:59:17Z', now, 'it-IT'), '43 secondi fa');
+  assert.equal(formatRelativeTime('2026-10-12T11:59:00Z', now, 'it-IT'), '1 minuto fa');
+  assert.equal(formatRelativeTime('2026-10-12T10:00:00Z', now, 'it-IT'), '2 ore fa');
+  assert.equal(formatRelativeTime('2026-10-09T12:00:00Z', now, 'it-IT'), '3 giorni fa');
+  assert.equal(formatRelativeTime('2026-10-12T11:59:58Z', now, 'it-IT'), 'ora');
+  assert.equal(formatRelativeTime('not-a-date', now, 'it-IT'), '');
+  assert.equal(formatRelativeTime(null, now, 'it-IT'), '');
+  assert.ok(seen.length >= 5);
+  for (const [locale, options] of seen) {
+    assert.equal(locale, 'it-IT');
+    assert.deepEqual(options, { numeric: 'auto' });
+  }
+});
+
+test('relative time falls back to short English without locale or Intl', (t) => {
+  const now = Date.parse('2026-10-12T12:00:00Z');
+  assert.equal(formatRelativeTime('2026-10-12T11:59:17Z', now, ''), 'just now');
+  assert.equal(formatRelativeTime('2026-10-12T11:59:17Z', now), 'just now');
+  const RealIntl = globalThis.Intl;
+  globalThis.Intl = undefined;
+  t.after(() => { globalThis.Intl = RealIntl; });
+  assert.equal(formatRelativeTime('2026-10-12T11:59:17Z', now, 'it-IT'), 'just now');
+  assert.equal(formatRelativeTime('2026-10-12T11:55:00Z', now, 'it-IT'), '5 min ago');
+  assert.equal(formatRelativeTime('2026-10-12T10:00:00Z', now, 'it-IT'), '2 h ago');
+  assert.equal(formatRelativeTime('2026-10-09T12:00:00Z', now, 'it-IT'), '3 d ago');
+});
+
+test('row numbers localize with hass locale while compact keeps raw output', (t) => {
+  assert.equal(formatNumber(20.5), '20.5');
+  assert.equal(formatNumber(20), '20');
+  assert.equal(formatNumber('20.5'), '20.5');
+  assert.equal(formatNumber(null), '');
+  assert.equal(formatNumber('unknown'), '');
+  const RealNf = globalThis.Intl.NumberFormat;
+  const seen = [];
+  class FakeNf {
+    constructor(locale, options) { seen.push([locale, options]); this.locale = locale; }
+    format(n) {
+      if (this.locale === 'it-IT') return String(n).replace('.', ',');
+      return String(n);
+    }
+  }
+  globalThis.Intl.NumberFormat = FakeNf;
+  t.after(() => { globalThis.Intl.NumberFormat = RealNf; });
+  assert.equal(formatNumber(20.5, 'it-IT'), '20,5');
+  assert.equal(formatNumber(20.25, 'it-IT'), '20,25');
+  assert.equal(formatNumber(20.5, 'en'), '20.5');
+  assert.ok(seen.some(([locale, options]) => locale === 'it-IT' && options?.maximumFractionDigits === 2));
+});
+
+test('row status parts keep humidity independent of the state chip', (t) => {
+  assert.deepEqual(
+    rowStatusParts({ statusText: 'Heating', humidityValue: 55, relativeText: '2 h ago', showStateChip: true, showHumidityChip: true }),
+    ['Heating', '55%', '2 h ago'],
+  );
+  assert.deepEqual(
+    rowStatusParts({ statusText: 'Heating', humidityValue: 55, relativeText: '2 h ago', showStateChip: false, showHumidityChip: true }),
+    ['55%'],
+  );
+  assert.deepEqual(
+    rowStatusParts({ statusText: 'Heating', humidityValue: 55, relativeText: '2 h ago', showStateChip: false, showHumidityChip: false }),
+    [],
+  );
+  assert.deepEqual(
+    rowStatusParts({ statusText: '', humidityValue: null, relativeText: '', showStateChip: true, showHumidityChip: true }),
+    [],
+  );
+  assert.deepEqual(
+    rowStatusParts({ statusText: 'Heating', humidityValue: null, relativeText: '2 h ago', showStateChip: true, showHumidityChip: true }),
+    ['Heating', '2 h ago'],
+  );
+  const RealNf = globalThis.Intl.NumberFormat;
+  class FakeNf {
+    constructor(locale) { this.locale = locale; }
+    format(n) {
+      if (this.locale === 'it-IT') return String(n).replace('.', ',');
+      return String(n);
+    }
+  }
+  globalThis.Intl.NumberFormat = FakeNf;
+  t.after(() => { globalThis.Intl.NumberFormat = RealNf; });
+  assert.deepEqual(
+    rowStatusParts({ statusText: 'Heating', humidityValue: 20.5, relativeText: '', showStateChip: false, showHumidityChip: true, locale: 'it-IT' }),
+    ['20,5%'],
+  );
+});
+
+test('row shadow CSS scopes a hidden rule to .row (static presence check, no rendering)', () => {
+  // No DOM available here, so verify the row shadow CSS statically: an
+  // explicit `.row [hidden]` rule must beat the author `.current`/`.controls`
+  // display declarations (which otherwise override the UA `[hidden] none`).
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const rowStart = source.indexOf('  _renderRow() {');
+  const compactStart = source.indexOf('  _renderCompact() {');
+  assert.ok(rowStart !== -1 && compactStart !== -1 && rowStart < compactStart);
+  const rowSection = source.slice(rowStart, compactStart);
+  assert.match(rowSection, /\.row\s*\[hidden\][^{]*\{[^}]*display\s*:\s*none\s*!important/);
+  const compactSection = source.slice(compactStart);
+  assert.doesNotMatch(compactSection, /\.row\s*\[hidden\]/);
 });
 
 const fakeRegistry = (entries = {}) => {

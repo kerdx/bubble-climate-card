@@ -90,11 +90,92 @@ export const temperaturePayload = (entity, value, step) => {
 };
 
 const valid = (v) => v !== undefined && v !== null && v !== '' && v !== 'unknown' && v !== 'unavailable';
+export const normalizeLayout = (value) => {
+  if (value === undefined || value === null || value === '') return 'row';
+  return value === 'row' || value === 'compact' ? value : null;
+};
+export const isClimateActive = (entityOrState) => {
+  const state = typeof entityOrState === 'string' ? entityOrState : entityOrState?.state;
+  if (typeof state !== 'string') return false;
+  const trimmed = state.trim();
+  if (!trimmed || trimmed === 'unknown' || trimmed === 'unavailable' || trimmed === 'off') return false;
+  return true;
+};
+export const climateStatusKey = (entity) => {
+  const action = entity?.attributes?.hvac_action;
+  if (typeof action === 'string' && action.trim() && valid(action.trim())) return action.trim();
+  return typeof entity?.state === 'string' ? entity.state : '';
+};
+const KNOWN_STATUS_LABELS = { heating: 'Heating', cooling: 'Cooling', drying: 'Drying', fan: 'Fan', idle: 'Idle', off: 'Off', preheating: 'Preheating', defrosting: 'Defrosting', heat: 'Heat', cool: 'Cool', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' };
+export const statusLabel = (status) => {
+  if (typeof status !== 'string') return '';
+  const key = status.trim();
+  if (!key) return '';
+  if (KNOWN_STATUS_LABELS[key]) return KNOWN_STATUS_LABELS[key];
+  const human = key.replaceAll('_', ' ').trim();
+  return human ? human.charAt(0).toUpperCase() + human.slice(1) : '';
+};
+export const pickEntityTimestamp = (entity) => {
+  for (const candidate of [entity?.last_changed, entity?.last_updated]) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue;
+    if (Number.isFinite(Date.parse(candidate))) return candidate;
+  }
+  return null;
+};
+export const formatNumber = (value, locale) => {
+  const n = typeof value === 'number' ? value : numeric(value);
+  if (n === null || !Number.isFinite(n)) return '';
+  try {
+    const tag = typeof locale === 'string' && locale.trim() ? locale.trim() : undefined;
+    if (typeof globalThis.Intl?.NumberFormat === 'function') {
+      return new globalThis.Intl.NumberFormat(tag, { maximumFractionDigits: 2 }).format(n);
+    }
+  } catch {}
+  return String(n);
+};
+export const formatRelativeTime = (timestamp, nowMs = Date.now(), locale) => {
+  const time = typeof timestamp === 'number' ? timestamp : typeof timestamp === 'string' ? Date.parse(timestamp) : NaN;
+  const now = typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
+  if (!Number.isFinite(time) || !Number.isFinite(now)) return '';
+  let diffSeconds = Math.round((now - time) / 1000);
+  if (diffSeconds < 0) diffSeconds = 0;
+  const tag = typeof locale === 'string' && locale.trim() ? locale.trim() : null;
+  if (tag) {
+    try {
+      const RelativeTimeFormat = globalThis.Intl?.RelativeTimeFormat;
+      if (typeof RelativeTimeFormat === 'function') {
+        const rtf = new RelativeTimeFormat(tag, { numeric: 'auto' });
+        if (diffSeconds < 5) return rtf.format(0, 'second');
+        if (diffSeconds < 60) return rtf.format(-diffSeconds, 'second');
+        const minutes = Math.floor(diffSeconds / 60);
+        if (minutes < 60) return rtf.format(-minutes, 'minute');
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return rtf.format(-hours, 'hour');
+        return rtf.format(-Math.floor(hours / 24), 'day');
+      }
+    } catch {}
+  }
+  if (diffSeconds < 45) return 'just now';
+  const minutes = Math.floor(diffSeconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} d ago`;
+};
+export const rowStatusParts = (options = {}) => {
+  const { statusText = '', humidityValue = null, relativeText = '', showStateChip = true, showHumidityChip = false, locale } = options;
+  const parts = [];
+  if (showStateChip && typeof statusText === 'string' && statusText) parts.push(String(statusText));
+  if (showHumidityChip && numeric(humidityValue) !== null) parts.push(`${formatNumber(numeric(humidityValue), locale)}%`);
+  if (showStateChip && relativeText) parts.push(String(relativeText));
+  return parts;
+};
 const modes = (entity) => Array.isArray(entity?.attributes?.hvac_modes) ? entity.attributes.hvac_modes : [];
 const HTMLElementBase = globalThis.HTMLElement ?? class {};
 
 export const defaultCardConfig = (entity = 'climate.example') => ({
-  entity, layout: 'compact', step: 0.5,
+  entity, layout: 'row', step: 0.5,
   show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
   show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
 });
@@ -106,6 +187,7 @@ export const configSchema = [
   { name: 'entity', required: true, selector: { entity: { filter: { domain: ['climate'] } } } },
   { name: 'name', selector: { text: {} } },
   { name: 'icon', selector: { icon: {} } },
+  { name: 'layout', selector: { select: { mode: 'dropdown', options: ['row', 'compact'] } } },
   ...['show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button'].map((name) => ({ name, selector: { boolean: {} } })),
   { name: 'step', selector: { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } } },
 ];
@@ -124,7 +206,7 @@ export class BubbleClimateCardEditor extends HTMLElementBase {
     form.hass = this._hass;
     form.data = { ...this._config };
     form.schema = configSchema;
-    form.computeLabel = (schema) => ({ entity: 'Climate entity', name: 'Name', icon: 'Icon', step: 'Step' }[schema.name] || schema.name.replaceAll('_', ' '));
+    form.computeLabel = (schema) => ({ entity: 'Climate entity', name: 'Name', icon: 'Icon', layout: 'Layout', step: 'Step' }[schema.name] || schema.name.replaceAll('_', ' '));
     form.addEventListener('value-changed', (event) => {
       event.stopPropagation();
       this._config = { ...this._config, ...(event.detail?.value || {}) };
@@ -141,19 +223,155 @@ export class BubbleClimateCard extends HTMLElementBase {
   }
   setConfig(config) {
     if (!config?.entity || !/^climate\./.test(config.entity)) throw new Error('Specify a climate entity (climate.*).');
-    if ((config.layout ?? 'compact') !== 'compact') throw new Error('Supported layout is "compact".');
+    const layout = normalizeLayout(config.layout);
+    if (!layout) throw new Error('Supported layouts are "row" and "compact".');
     if (config.step !== undefined && (numeric(config.step) === null || numeric(config.step) <= 0)) throw new Error('step must be a number greater than zero.');
-    this.config = { layout: 'compact', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true, step: 0.5, ...config };
+    this.config = { layout: 'row', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
+      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true, step: 0.5, ...config, layout };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._render();
   }
   set hass(hass) { this._hass = hass; this._render(); }
-  getCardSize() { return 2; }
+  getCardSize() { return this.config?.layout === 'compact' ? 2 : 1; }
   _service(domain, service, data) { if (this._hass) this._hass.callService(domain, service, data); }
+  _statusDisplay(entity) {
+    const key = climateStatusKey(entity);
+    const hass = this._hass;
+    try {
+      const action = entity?.attributes?.hvac_action;
+      if (typeof action === 'string' && action.trim() && valid(action.trim()) && typeof hass?.formatEntityAttributeValue === 'function') {
+        const formatted = hass.formatEntityAttributeValue(entity, 'hvac_action');
+        if (typeof formatted === 'string' && formatted.trim()) return formatted;
+      }
+    } catch {}
+    try {
+      if (typeof hass?.formatEntityState === 'function' && entity) {
+        const formatted = hass.formatEntityState({ ...entity, state: String(key || entity.state || '') });
+        if (typeof formatted === 'string' && formatted.trim()) return formatted;
+      }
+    } catch {}
+    return statusLabel(key || entity?.state);
+  }
+  _relativeDisplay(entity) {
+    const timestamp = pickEntityTimestamp(entity);
+    if (!timestamp) return '';
+    try {
+      return formatRelativeTime(timestamp, Date.now(), this._hass?.locale?.language);
+    } catch { return ''; }
+  }
   _render() {
     if (!this.shadowRoot || !this.config) return;
     if (this._scheduleOpen && this.shadowRoot.querySelector('dialog[open]')) return;
+    if ((this.config.layout ?? 'row') === 'compact') this._renderCompact();
+    else this._renderRow();
+  }
+  _renderRow() {
+    const c = this.config, e = this._hass?.states?.[c.entity], a = e?.attributes || {};
+    const unavailable = !e || !valid(e.state);
+    const active = !unavailable && isClimateActive(e);
+    const currentValue = numeric(a.current_temperature);
+    const model = targetModel(e);
+    const unit = this._hass?.config?.unit_system?.temperature || '°C';
+    const target = model.value;
+    const title = c.name || a.friendly_name || c.entity;
+    const hasTarget = !unavailable && model.available;
+    const step = effectiveStep(e, c.step);
+    const adjustable = hasTarget && model.controllable && step !== null && step > 0;
+    const statusText = unavailable ? 'Unavailable' : this._statusDisplay(e);
+    const relativeText = unavailable ? '' : this._relativeDisplay(e);
+    const humidityValue = numeric(a.current_humidity);
+    const locale = this._hass?.locale?.language;
+    this.shadowRoot.innerHTML = `<style>
+      :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
+      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:10px 12px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden}
+      .row{display:flex;align-items:center;gap:12px;min-width:0}
+      .icon{width:40px;height:40px;flex:0 0 40px;border-radius:50%;display:grid;place-items:center;background:var(--secondary-background-color);color:var(--secondary-text-color);border:1px solid var(--divider-color)}
+      .icon[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff);border-color:transparent}
+      .icon ha-icon{--mdc-icon-size:22px}
+      .meta{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+      .title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .status{font-size:12px;color:var(--secondary-text-color);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:5px 9px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
+      .current ha-icon{--mdc-icon-size:14px;display:block}
+      .current span{white-space:nowrap}
+      .row [hidden]{display:none!important}
+      .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:2px;background:var(--secondary-background-color);border-radius:999px;padding:2px;max-width:100%;overflow-x:auto;overflow-y:hidden}
+      .controls button{font:inherit;color:var(--primary-text-color);background:transparent;border:0;border-radius:999px;padding:7px 10px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+      .controls button:hover{background:var(--divider-color)}
+      .controls button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+      .controls button:disabled{opacity:.45;cursor:default}
+      .controls .setpoint{font-weight:600;min-width:62px;text-align:center}
+      .controls .schedule{display:grid;place-items:center;padding:7px 9px}
+      .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
+      @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:4px 7px}.controls button{padding:6px 8px}.controls .setpoint{min-width:54px}}
+      dialog{color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:16px;width:min(560px,calc(100vw - 40px));max-height:85vh;overflow:auto}dialog::backdrop{background:#0008}.slot{border-top:1px solid var(--divider-color);padding:12px 0}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}.days{display:flex;gap:8px;flex-wrap:wrap}.error{color:var(--error-color)}
+    </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div></div></ha-card>`;
+    const root = this.shadowRoot;
+    const icon = root.querySelector('.icon');
+    icon.dataset.active = active ? 'true' : 'false';
+    root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
+    root.querySelector('.icon ha-icon').setAttribute('aria-hidden', 'true');
+    root.querySelector('.title').textContent = String(title);
+    const statusEl = root.querySelector('.status');
+    if (unavailable) {
+      if (c.show_unavailable_badge) statusEl.textContent = String(statusText);
+      else statusEl.hidden = true;
+    } else {
+      const parts = rowStatusParts({ statusText, humidityValue, relativeText, showStateChip: c.show_state_chip, showHumidityChip: c.show_humidity_chip, locale });
+      if (parts.length) statusEl.textContent = parts.join(' · ');
+      else statusEl.hidden = true;
+    }
+    const currentEl = root.querySelector('.current');
+    const currentIcon = currentEl.querySelector('ha-icon');
+    currentIcon.setAttribute('icon', 'mdi:home-thermometer');
+    currentIcon.setAttribute('aria-hidden', 'true');
+    const currentText = currentEl.querySelector('span');
+    if (c.show_current_temperature_chip && !unavailable && currentValue !== null) {
+      const currentDisplay = `${formatNumber(currentValue, locale)}${unit}`;
+      currentText.textContent = currentDisplay;
+      currentEl.setAttribute('role', 'img');
+      currentEl.setAttribute('aria-label', `Current temperature ${currentDisplay}`);
+    } else currentEl.hidden = true;
+    const controls = root.querySelector('.controls');
+    if (unavailable) controls.hidden = true;
+    else {
+      if (c.show_step_controls && adjustable) { const minus = document.createElement('button'); minus.dataset.delta = String(-step); minus.setAttribute('aria-label', 'Decrease target temperature'); minus.textContent = '−'; controls.append(minus); }
+      const setpoint = document.createElement('button');
+      setpoint.className = 'setpoint';
+      if (hasTarget) {
+        const targetDisplay = formatNumber(target, locale);
+        const lowDisplay = formatNumber(model.low, locale);
+        const highDisplay = formatNumber(model.high, locale);
+        const label = model.dual ? `${lowDisplay}–${highDisplay}${unit}` : `${targetDisplay}${unit}`;
+        const accessible = model.dual ? `Target temperature range ${lowDisplay} to ${highDisplay}${unit}` : `Target ${targetDisplay}${unit}`;
+        setpoint.textContent = label;
+        setpoint.title = accessible;
+        setpoint.setAttribute('aria-label', `${accessible}. Open details`);
+      } else {
+        setpoint.textContent = '—';
+        setpoint.setAttribute('aria-label', 'Target unavailable');
+        setpoint.disabled = true;
+      }
+      controls.append(setpoint);
+      if (c.show_step_controls && adjustable) { const plus = document.createElement('button'); plus.dataset.delta = String(step); plus.setAttribute('aria-label', 'Increase target temperature'); plus.textContent = '+'; controls.append(plus); }
+      if (c.show_schedule_button) {
+        const schedule = document.createElement('button');
+        schedule.className = 'schedule';
+        schedule.setAttribute('aria-label', 'Open schedule details');
+        schedule.title = 'Open schedule details';
+        schedule.innerHTML = '<ha-icon icon="mdi:calendar-clock"></ha-icon>';
+        controls.append(schedule);
+        schedule.addEventListener('click', () => this._openSchedule());
+      }
+      if (!controls.children.length) controls.hidden = true;
+      setpoint.addEventListener('click', () => {
+        if (setpoint.disabled) return;
+        this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: c.entity }, bubbles: true, composed: true }));
+      });
+      controls.querySelectorAll('[data-delta]').forEach((b) => b.addEventListener('click', () => this._setTemperature(target + Number(b.dataset.delta), e)));
+    }
+  }
+  _renderCompact() {
     const c = this.config, e = this._hass?.states?.[c.entity], a = e?.attributes || {};
     const unavailable = !e || !valid(e.state);
     const currentValue = numeric(a.current_temperature);

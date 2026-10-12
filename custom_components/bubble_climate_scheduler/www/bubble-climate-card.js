@@ -268,9 +268,118 @@ export class BubbleClimateCard extends HTMLElementBase {
   }
 }
 
-if (globalThis.customElements && globalThis.HTMLElement && !customElements.get('bubble-climate-card')) customElements.define('bubble-climate-card', BubbleClimateCard);
-if (globalThis.customElements && globalThis.HTMLElement && !customElements.get('bubble-climate-card-editor')) customElements.define('bubble-climate-card-editor', BubbleClimateCardEditor);
-if (globalThis.window) {
-  window.customCards = window.customCards || [];
-  if (!window.customCards.some((card) => card.type === 'bubble-climate-card')) window.customCards.push({ type: 'bubble-climate-card', name: 'Bubble Climate Card', description: 'Compact standalone climate card', getEntitySuggestion });
+export const BUBBLE_CLIMATE_CARD_TAG = 'bubble-climate-card';
+export const BUBBLE_CLIMATE_CARD_EDITOR_TAG = 'bubble-climate-card-editor';
+// Element defined by the HA frontend app bundle itself. Its presence in the
+// *live* registry proves the scoped customElements registry/polyfill has been
+// installed, i.e. extra-module race from home-assistant/frontend#53890 is over.
+const FRONTEND_READY_TAG = 'home-assistant';
+const REREGISTER_POLL_MS = 100;
+const REREGISTER_MAX_ATTEMPTS = 300;
+
+const ensureBubbleClimateCardList = () => {
+  if (!globalThis.window) return;
+  const scope = globalThis.window;
+  scope.customCards = scope.customCards || [];
+  if (!scope.customCards.some((card) => card?.type === BUBBLE_CLIMATE_CARD_TAG)) scope.customCards.push({ type: BUBBLE_CLIMATE_CARD_TAG, name: 'Bubble Climate Card', description: 'Compact standalone climate card', getEntitySuggestion });
+};
+
+export const isBubbleClimateElementsRegistered = () => {
+  try {
+    const registry = globalThis.customElements;
+    return registry?.get?.(BUBBLE_CLIMATE_CARD_TAG) === BubbleClimateCard
+      && registry?.get?.(BUBBLE_CLIMATE_CARD_EDITOR_TAG) === BubbleClimateCardEditor;
+  } catch {
+    return false;
+  }
+};
+
+export const registerBubbleClimateElements = () => {
+  // Keep the original card-picker entry independent of element registration:
+  // it must be added idempotently even when customElements/HTMLElement is
+  // (temporarily) unavailable.
+  ensureBubbleClimateCardList();
+  // Read the registry afresh on every call: HA replaces window.customElements
+  // when the scoped polyfill takes over, so a captured reference could point
+  // to the stale native registry where the first define() was lost.
+  const registry = globalThis.customElements;
+  if (!registry?.define || !registry?.get || !globalThis.HTMLElement) return false;
+  for (const [tag, ctor] of [[BUBBLE_CLIMATE_CARD_TAG, BubbleClimateCard], [BUBBLE_CLIMATE_CARD_EDITOR_TAG, BubbleClimateCardEditor]]) {
+    if (!registry.get(tag)) {
+      try {
+        registry.define(tag, ctor);
+      } catch (error) {
+        // Benign only when another copy raced us and the tag is now defined.
+        // Any other define() failure (invalid name/constructor) must surface.
+        if (!registry.get(tag)) throw error;
+      }
+    }
+  }
+  return isBubbleClimateElementsRegistered();
+};
+
+export const isHomeAssistantFrontendReady = () => {
+  try {
+    return Boolean(globalThis.customElements?.get?.(FRONTEND_READY_TAG));
+  } catch {
+    return false;
+  }
+};
+
+export const scheduleBubbleClimateReregistration = ({ intervalMs = REREGISTER_POLL_MS, maxAttempts = REREGISTER_MAX_ATTEMPTS, schedule = (fn, ms) => setTimeout(fn, ms), clear = (timerId) => clearTimeout(timerId), warn = (message) => globalThis.console?.warn?.(message) } = {}) => {
+  let attempts = 0;
+  let timer = null;
+  const cancel = () => {
+    if (timer !== null) {
+      clear(timer);
+      timer = null;
+    }
+  };
+  const giveUp = () => {
+    try {
+      warn?.(`bubble-climate-card: frontend not ready or card missing from the active registry after ${attempts} attempt(s).`);
+    } catch {}
+  };
+  const poll = () => {
+    timer = null;
+    if (isHomeAssistantFrontendReady()) {
+      try {
+        registerBubbleClimateElements();
+      } catch (error) {
+        // Deterministic failure path: a real define() error would otherwise
+        // escape this timer callback as an uncaught exception, aborting the
+        // poll without the bounded exhaustion diagnosis. Surface the error
+        // once and stop: retrying a deterministic constructor failure would
+        // only spam. The bounded exhaustion warning below stays a single
+        // event for the retry-exhausted path.
+        try {
+          warn?.(`bubble-climate-card: failed to register custom elements: ${error?.message || error}`);
+        } catch {}
+        return;
+      }
+      // Do not stop just because home-assistant is ready: the scoped swap may
+      // still have dropped our tags, so verify both tags map to our ctors.
+      if (isBubbleClimateElementsRegistered()) return;
+    }
+    attempts += 1;
+    if (attempts >= maxAttempts) {
+      giveUp();
+      return;
+    }
+    timer = schedule(poll, intervalMs);
+  };
+  registerBubbleClimateElements();
+  if (isHomeAssistantFrontendReady() && isBubbleClimateElementsRegistered()) return cancel;
+  if (maxAttempts <= 0) {
+    giveUp();
+    return cancel;
+  }
+  timer = schedule(poll, intervalMs);
+  return cancel;
+};
+
+if (globalThis.window && typeof setTimeout === 'function') {
+  scheduleBubbleClimateReregistration();
+} else {
+  registerBubbleClimateElements();
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BubbleClimateCard, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep } from './bubble-climate-card.js';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -108,4 +108,239 @@ test('schedule draft conversion and validation', () => {
   assert.equal(validateScheduleDraft({ enabled: false, slots: [] }), null);
   assert.match(validateScheduleDraft({ slots: [{ ...draft.slots[0], end: '07:30' }] }), /start and end/);
   assert.ok(validateScheduleDraft({ slots: [{ ...draft.slots[0], temperature: '' }] }));
+});
+
+const fakeRegistry = (entries = {}) => {
+  // Minimal stand-in for CustomElementRegistry used without a DOM: it enforces
+  // only duplicate-name and constructor-type checks. Unlike the native
+  // registry it cannot validate custom-element construction steps or DOM Node
+  // constraints, since no DOM Node exists in this harness.
+  const store = new Map(Object.entries(entries));
+  return {
+    store,
+    get(tag) { return store.get(tag); },
+    define(tag, ctor) {
+      if (typeof ctor !== 'function') throw new TypeError('Custom element constructor must be a function');
+      if (store.has(tag)) throw new Error(`"${tag}" has already been defined`);
+      store.set(tag, ctor);
+    },
+  };
+};
+
+const fakeTimers = () => {
+  let nextId = 1;
+  const pending = new Map();
+  const cleared = [];
+  return {
+    pending,
+    cleared,
+    schedule(fn) { const id = nextId++; pending.set(id, fn); return id; },
+    clear(id) { cleared.push(id); pending.delete(id); },
+  };
+};
+
+const withBrowserStubs = (t, { registry, win } = {}) => {
+  const prevElements = globalThis.customElements;
+  const prevHTMLElement = globalThis.HTMLElement;
+  const prevWindow = globalThis.window;
+  class FakeHTMLElement {}
+  globalThis.customElements = registry ?? fakeRegistry();
+  globalThis.HTMLElement = FakeHTMLElement;
+  globalThis.window = win ?? {};
+  t.after(() => {
+    if (prevElements === undefined) delete globalThis.customElements;
+    else globalThis.customElements = prevElements;
+    if (prevHTMLElement === undefined) delete globalThis.HTMLElement;
+    else globalThis.HTMLElement = prevHTMLElement;
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  });
+  return FakeHTMLElement;
+};
+
+test('card registration is idempotent in the same registry', (t) => {
+  const registry = fakeRegistry();
+  const win = { customCards: [] };
+  withBrowserStubs(t, { registry, win });
+  assert.equal(registerBubbleClimateElements(), true);
+  assert.equal(registerBubbleClimateElements(), true);
+  assert.equal(registry.get(BUBBLE_CLIMATE_CARD_TAG), BubbleClimateCard);
+  assert.equal(registry.get(BUBBLE_CLIMATE_CARD_EDITOR_TAG), BubbleClimateCardEditor);
+  assert.equal(isBubbleClimateElementsRegistered(), true);
+  assert.equal(win.customCards.filter((card) => card?.type === 'bubble-climate-card').length, 1);
+});
+
+test('window.customCards entry is preserved without customElements', (t) => {
+  const prevElements = globalThis.customElements;
+  const prevHTMLElement = globalThis.HTMLElement;
+  const prevWindow = globalThis.window;
+  const win = { customCards: [] };
+  delete globalThis.customElements;
+  delete globalThis.HTMLElement;
+  globalThis.window = win;
+  t.after(() => {
+    if (prevElements === undefined) delete globalThis.customElements;
+    else globalThis.customElements = prevElements;
+    if (prevHTMLElement === undefined) delete globalThis.HTMLElement;
+    else globalThis.HTMLElement = prevHTMLElement;
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  });
+  assert.equal(registerBubbleClimateElements(), false);
+  assert.equal(registerBubbleClimateElements(), false);
+  assert.equal(win.customCards.filter((card) => card?.type === 'bubble-climate-card').length, 1);
+});
+
+test('card re-registers in a replaced scoped registry once the frontend is ready', (t) => {
+  const win = { customCards: [] };
+  const nativeRegistry = fakeRegistry();
+  withBrowserStubs(t, { registry: nativeRegistry, win });
+  assert.equal(registerBubbleClimateElements(), true);
+  assert.equal(nativeRegistry.get('bubble-climate-card'), BubbleClimateCard);
+  // Scoped polyfill replaces window.customElements: fresh registry that only
+  // knows the app bundle element, reproducing customElements.get(card) holes.
+  class HomeAssistantElement {}
+  const scopedRegistry = fakeRegistry({ 'home-assistant': HomeAssistantElement });
+  globalThis.customElements = scopedRegistry;
+  assert.equal(isHomeAssistantFrontendReady(), true);
+  assert.equal(scopedRegistry.get('bubble-climate-card'), undefined);
+  assert.equal(registerBubbleClimateElements(), true);
+  assert.equal(scopedRegistry.get('bubble-climate-card'), BubbleClimateCard);
+  assert.equal(scopedRegistry.get('bubble-climate-card-editor'), BubbleClimateCardEditor);
+  assert.equal(isBubbleClimateElementsRegistered(), true);
+  assert.equal(win.customCards.filter((card) => card?.type === 'bubble-climate-card').length, 1);
+  assert.equal(nativeRegistry.get('bubble-climate-card'), BubbleClimateCard);
+});
+
+test('deferred poll registers queued attempt in the live scoped registry', (t) => {
+  const win = { customCards: [] };
+  withBrowserStubs(t, { registry: fakeRegistry(), win });
+  assert.equal(isHomeAssistantFrontendReady(), false);
+  const timers = fakeTimers();
+  const warnings = [];
+  const cancel = scheduleBubbleClimateReregistration({
+    intervalMs: 1, maxAttempts: 5,
+    schedule: timers.schedule, clear: timers.clear, warn: (message) => warnings.push(String(message)),
+  });
+  assert.equal(typeof cancel, 'function');
+  assert.equal(timers.pending.size, 1);
+  const [queuedId] = [...timers.pending.keys()];
+  // Scoped polyfill swaps the registry while the poll is pending: the new live
+  // registry already contains home-assistant but lost our tags.
+  class HomeAssistantElement {}
+  const scopedRegistry = fakeRegistry({ 'home-assistant': HomeAssistantElement });
+  globalThis.customElements = scopedRegistry;
+  assert.equal(isHomeAssistantFrontendReady(), true);
+  const queuedPoll = timers.pending.get(queuedId);
+  assert.equal(typeof queuedPoll, 'function');
+  timers.pending.delete(queuedId);
+  queuedPoll();
+  assert.equal(scopedRegistry.get(BUBBLE_CLIMATE_CARD_TAG), BubbleClimateCard);
+  assert.equal(scopedRegistry.get(BUBBLE_CLIMATE_CARD_EDITOR_TAG), BubbleClimateCardEditor);
+  assert.equal(isBubbleClimateElementsRegistered(), true);
+  assert.equal(timers.pending.size, 0);
+  assert.equal(warnings.length, 0);
+  cancel();
+});
+
+test('ready poll retries until the bounded limit when verification keeps failing', (t) => {
+  const win = { customCards: [] };
+  class HomeAssistantElement {}
+  // Registry reports the frontend as ready but silently drops our tags, so
+  // every register() attempt leaves verification false without throwing.
+  const store = new Map([['home-assistant', HomeAssistantElement]]);
+  const refusingRegistry = {
+    store,
+    get(tag) { return store.get(tag); },
+    define(tag, ctor) {
+      if (typeof ctor !== 'function') throw new TypeError('Custom element constructor must be a function');
+      if (tag === 'home-assistant') {
+        if (!store.has(tag)) store.set(tag, ctor);
+        return;
+      }
+    },
+  };
+  withBrowserStubs(t, { registry: refusingRegistry, win });
+  assert.equal(isHomeAssistantFrontendReady(), true);
+  const timers = fakeTimers();
+  const warnings = [];
+  scheduleBubbleClimateReregistration({
+    intervalMs: 1, maxAttempts: 2,
+    schedule: timers.schedule, clear: timers.clear, warn: (message) => warnings.push(String(message)),
+  });
+  assert.equal(timers.pending.size, 1);
+  assert.equal(isBubbleClimateElementsRegistered(), false);
+  const first = [...timers.pending.values()][0];
+  timers.pending.clear();
+  first();
+  assert.equal(timers.pending.size, 1);
+  assert.equal(isBubbleClimateElementsRegistered(), false);
+  const second = [...timers.pending.values()][0];
+  timers.pending.clear();
+  second();
+  assert.equal(timers.pending.size, 0);
+  assert.equal(isBubbleClimateElementsRegistered(), false);
+  assert.equal(warnings.length, 1);
+});
+
+test('define failure in poll surfaces once and stops polling without uncaught', (t) => {
+  const win = { customCards: [] };
+  withBrowserStubs(t, { registry: fakeRegistry(), win });
+  assert.equal(isHomeAssistantFrontendReady(), false);
+  const timers = fakeTimers();
+  const warnings = [];
+  scheduleBubbleClimateReregistration({
+    intervalMs: 1, maxAttempts: 5,
+    schedule: timers.schedule, clear: timers.clear, warn: (message) => warnings.push(String(message)),
+  });
+  assert.equal(timers.pending.size, 1);
+  const [queuedId] = [...timers.pending.keys()];
+  // Scoped swap delivers a live registry that reports the frontend as ready
+  // but throws deterministically when defining the card tag.
+  class HomeAssistantElement {}
+  const store = new Map([['home-assistant', HomeAssistantElement]]);
+  const throwingRegistry = {
+    get(tag) { return store.get(tag); },
+    define(tag, ctor) {
+      if (tag === BUBBLE_CLIMATE_CARD_TAG) throw new TypeError('invalid constructor');
+      if (typeof ctor !== 'function') throw new TypeError('Custom element constructor must be a function');
+      if (!store.has(tag)) store.set(tag, ctor);
+    },
+  };
+  globalThis.customElements = throwingRegistry;
+  assert.equal(isHomeAssistantFrontendReady(), true);
+  const queuedPoll = timers.pending.get(queuedId);
+  assert.equal(typeof queuedPoll, 'function');
+  timers.pending.delete(queuedId);
+  assert.doesNotThrow(queuedPoll);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /failed to register custom elements/);
+  assert.match(warnings[0], /invalid constructor/);
+  assert.equal(timers.pending.size, 0);
+  assert.equal(isBubbleClimateElementsRegistered(), false);
+});
+
+test('cancel clears a pending poll before it runs', (t) => {
+  const win = { customCards: [] };
+  withBrowserStubs(t, { registry: fakeRegistry(), win });
+  assert.equal(isHomeAssistantFrontendReady(), false);
+  const timers = fakeTimers();
+  const warnings = [];
+  let ran = 0;
+  const originalSchedule = timers.schedule;
+  const cancel = scheduleBubbleClimateReregistration({
+    intervalMs: 1, maxAttempts: 5,
+    schedule: (fn, ms) => originalSchedule(() => { ran += 1; fn(); }, ms),
+    clear: timers.clear,
+    warn: (message) => warnings.push(String(message)),
+  });
+  assert.equal(timers.pending.size, 1);
+  const [timerId] = [...timers.pending.keys()];
+  cancel();
+  assert.deepEqual(timers.cleared, [timerId]);
+  assert.equal(timers.pending.size, 0);
+  assert.equal(ran, 0);
+  cancel();
+  assert.equal(timers.cleared.length, 1);
+  assert.equal(warnings.length, 0);
 });

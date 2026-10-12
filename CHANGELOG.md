@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.7
+
+- Refine the `row` layout to more faithfully match the reference screenshot, with decrease, target setpoint, and increase grouped in one control pill and consistent spacing before temperature units.
+- Improve narrow-width navigation and horizontal overflow handling so controls remain reachable without overflowing the card.
+- Hide the calendar button by default; it remains available as an opt-in with `show_schedule_button: true`. Preserve the existing `compact` layout.
+- No backend changes.
+
 ## v0.1.6
 
 - Match the referenced card screenshot: the row current-temperature chip is tinted with the accent color while the climate entity is active (icon follows the text color), and the target setpoint renders as borderless text between the minus and plus pills.

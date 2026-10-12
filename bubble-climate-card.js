@@ -171,13 +171,17 @@ export const rowStatusParts = (options = {}) => {
   if (showStateChip && relativeText) parts.push(String(relativeText));
   return parts;
 };
+export const currentTemperatureDisplay = (value, unit, locale) => {
+  const formatted = formatNumber(value, locale);
+  return formatted ? `${formatted} ${unit}` : '';
+};
 const modes = (entity) => Array.isArray(entity?.attributes?.hvac_modes) ? entity.attributes.hvac_modes : [];
 const HTMLElementBase = globalThis.HTMLElement ?? class {};
 
 export const defaultCardConfig = (entity = 'climate.example') => ({
   entity, layout: 'row', step: 0.5,
   show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-  show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
+   show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false,
 });
 export const getEntitySuggestion = (_hass, entityId) => typeof entityId === 'string' && entityId.startsWith('climate.')
   ? { type: 'custom:bubble-climate-card', ...defaultCardConfig(entityId) }
@@ -227,7 +231,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     if (!layout) throw new Error('Supported layouts are "row" and "compact".');
     if (config.step !== undefined && (numeric(config.step) === null || numeric(config.step) <= 0)) throw new Error('step must be a number greater than zero.');
     this.config = { layout: 'row', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true, step: 0.5, ...config, layout };
+      show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false, step: 0.5, ...config, layout };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     this._render();
   }
@@ -283,30 +287,34 @@ export class BubbleClimateCard extends HTMLElementBase {
     const locale = this._hass?.locale?.language;
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
-      ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:10px 12px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden}
-      .row{display:flex;align-items:center;gap:12px;min-width:0}
+       ha-card{border:1px solid var(--divider-color);border-radius:var(--bubble-border-radius,18px);background:var(--ha-card-background,var(--card-background-color));padding:8px 10px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden}
+       .row{display:flex;align-items:center;gap:10px;min-width:0}
       .icon{width:40px;height:40px;flex:0 0 40px;border-radius:50%;display:grid;place-items:center;background:var(--secondary-background-color);color:var(--secondary-text-color);border:1px solid var(--divider-color)}
       .icon[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff);border-color:transparent}
       .icon ha-icon{--mdc-icon-size:22px}
-      .meta{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+      .meta{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
       .title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .status{font-size:12px;color:var(--secondary-text-color);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+       .status{font-size:12px;color:var(--secondary-text-color);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+       .status-line{display:flex;min-width:0;gap:0;white-space:nowrap;overflow:hidden}
+       .status-line span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+       .status-line span+span:before{content:' · ';white-space:pre;color:var(--secondary-text-color)}
+       .status-line .relative{flex:0 0 auto;overflow:visible}
       .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:9px 13px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
       .current[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
       .current ha-icon{--mdc-icon-size:15px;display:block;color:currentColor;opacity:.85}
       .current span{white-space:nowrap}
       .row [hidden]{display:none!important}
-      .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;background:transparent;padding:0;max-width:100%;overflow-x:auto;overflow-y:hidden}
-      .controls button{font:inherit;font-size:14px;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:8px 13px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+       .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:0;background:var(--secondary-background-color);border-radius:999px;padding:2px;max-width:42%;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;scrollbar-width:thin}
+       .controls button{font:inherit;font-size:14px;color:var(--primary-text-color);background:transparent;border:0;border-radius:999px;padding:7px 10px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
       .controls button:hover{background:var(--divider-color)}
       .controls button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
       .controls button:disabled{opacity:.45;cursor:default;background:var(--secondary-background-color)}
-      .controls .setpoint{font-weight:600;min-width:58px;text-align:center;background:transparent;font-size:15px;padding:8px 2px}
+       .controls .setpoint{font-weight:600;min-width:58px;text-align:center;background:transparent;font-size:14px;padding:7px 2px}
       .controls .setpoint:hover{background:transparent}
       .controls .setpoint:focus-visible{outline-offset:0;border-radius:10px}
       .controls .schedule{display:grid;place-items:center;padding:8px 11px}
       .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
-      @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 9px}.controls{gap:6px}.controls button{padding:6px 9px;font-size:13px}.controls .setpoint{min-width:54px}.controls .schedule{padding:6px 8px}}
+       @media(max-width:420px){ha-card{padding:7px 8px}.row{gap:7px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 8px}.controls button{padding:6px 7px;font-size:13px}.controls .setpoint{min-width:48px}.controls .schedule{padding:6px 8px}}
     </style><ha-card><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div></div></ha-card>`;
     const root = this.shadowRoot;
     const icon = root.querySelector('.icon');
@@ -320,7 +328,11 @@ export class BubbleClimateCard extends HTMLElementBase {
       else statusEl.hidden = true;
     } else {
       const parts = rowStatusParts({ statusText, humidityValue, relativeText, showStateChip: c.show_state_chip, showHumidityChip: c.show_humidity_chip, locale });
-      if (parts.length) statusEl.textContent = parts.join(' · ');
+       if (parts.length) {
+         const statusLine = document.createElement('span'); statusLine.className = 'status-line';
+         parts.forEach((part) => { const item = document.createElement('span'); item.textContent = part; if (part === relativeText && c.show_state_chip) item.className = 'relative'; statusLine.append(item); });
+         statusEl.append(statusLine);
+       }
       else statusEl.hidden = true;
     }
     const currentEl = root.querySelector('.current');
@@ -330,12 +342,15 @@ export class BubbleClimateCard extends HTMLElementBase {
     currentEl.dataset.active = String(active && !unavailable);
     const currentText = currentEl.querySelector('span');
     if (c.show_current_temperature_chip && !unavailable && currentValue !== null) {
-      const currentDisplay = `${formatNumber(currentValue, locale)}${unit}`;
+      const currentDisplay = currentTemperatureDisplay(currentValue, unit, locale);
       currentText.textContent = currentDisplay;
       currentEl.setAttribute('role', 'img');
       currentEl.setAttribute('aria-label', `Current temperature ${currentDisplay}`);
     } else currentEl.hidden = true;
     const controls = root.querySelector('.controls');
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', 'Temperature controls');
+    controls.tabIndex = 0;
     if (unavailable) controls.hidden = true;
     else {
       if (c.show_step_controls && adjustable) { const minus = document.createElement('button'); minus.dataset.delta = String(-step); minus.setAttribute('aria-label', 'Decrease target temperature'); minus.textContent = '−'; controls.append(minus); }
@@ -345,8 +360,8 @@ export class BubbleClimateCard extends HTMLElementBase {
         const targetDisplay = formatNumber(target, locale);
         const lowDisplay = formatNumber(model.low, locale);
         const highDisplay = formatNumber(model.high, locale);
-        const label = model.dual ? `${lowDisplay}–${highDisplay}${unit}` : `${targetDisplay}${unit}`;
-        const accessible = model.dual ? `Target temperature range ${lowDisplay} to ${highDisplay}${unit}` : `Target ${targetDisplay}${unit}`;
+         const label = model.dual ? `${lowDisplay}–${highDisplay} ${unit}` : `${targetDisplay} ${unit}`;
+         const accessible = model.dual ? `Target temperature range ${lowDisplay} to ${highDisplay} ${unit}` : `Target ${targetDisplay} ${unit}`;
         setpoint.textContent = label;
         setpoint.title = accessible;
         setpoint.setAttribute('aria-label', `${accessible}. Open details`);

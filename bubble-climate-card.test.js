@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts } from './bubble-climate-card.js';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
   assert.equal(typeof clampTarget, 'function');
+});
+
+test('row status and temperatures preserve readable separators and spacing', () => {
+  assert.deepEqual(rowStatusParts({ statusText: 'Off', relativeText: '1 hour ago' }), ['Off', '1 hour ago']);
+  assert.equal(currentTemperatureDisplay(20.5, '°C', 'it-IT'), '20,5 °C');
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  assert.match(source, /\.status-line span\+span:before\{content:' · '/);
+  assert.match(source, /overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain/);
+  assert.match(source, /\.meta\{flex:1 1 0;min-width:0/);
 });
 
 test('editor schema exposes climate entity and all supported visual options', () => {
@@ -16,7 +25,7 @@ test('editor schema exposes climate entity and all supported visual options', ()
   assert.deepEqual(defaultCardConfig('climate.living_room'), {
     entity: 'climate.living_room', layout: 'row', step: 0.5,
     show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-    show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
+     show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: false,
   });
   assert.equal(typeof BubbleClimateCard.getStubConfig, 'function');
   assert.equal(typeof BubbleClimateCard.getConfigElement, 'function');

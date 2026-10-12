@@ -42,7 +42,7 @@
 
 The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
-**Version note:** the current release is [`v0.1.6`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.6). HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+**Version note:** the current release is [`v0.1.7`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.7). HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
 ### HACS
 
@@ -74,7 +74,7 @@ show_current_temperature_chip: true
 show_humidity_chip: false
 show_unavailable_badge: false
 show_step_controls: true
-show_schedule_button: true
+show_schedule_button: false
 step: 0.5
 ```
 
@@ -98,17 +98,17 @@ The integration serves and registers the bundled frontend JavaScript. No manual 
 | `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
 | `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity (`compact` layout only; in `row` there is no inline mode menu and modes are changed from the entity details opened by the setpoint). |
 | `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
-| `show_schedule_button` | `true` | Show the button that opens the weekly schedule editor. |
+| `show_schedule_button` | `false` | Show the button that opens the weekly schedule editor. |
 | `step` | `0.5` | Fallback temperature increment used only when the climate entity's `target_temp_step` is missing, `unknown`, `unavailable`, or null. A declared invalid step (zero, negative, or non-numeric) disables target controls rather than substituting an unsupported increment. A valid entity step always takes precedence; for example, an entity step of `1` is not treated as `0.5`. |
 
 ## Layout anatomy
 
-The default `row` layout shows a horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with a readable status line beneath it, the current-temperature chip when enabled, and a control cluster of **independent rounded pills** — decrease, target setpoint, increase, and the calendar button (hidden when `show_schedule_button` is `false`).
+The default `row` layout shows a compact horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with status and relative time beneath it, the current-temperature chip when enabled, and a single grouped control pill — decrease, target setpoint, increase. The calendar button is hidden by default and can be enabled with `show_schedule_button: true`.
 
-- The current-temperature chip pairs an `mdi:home-thermometer` house icon with the measured value in a text span; the chip carries `role="img"` with an accessible label while the house icon itself is decorative and hidden from assistive technology; the whole chip (icon included) is hidden when the option is off or the value is unavailable.
+- The current-temperature chip pairs an `mdi:home-thermometer` house icon with the measured value and a space before the unit (for example `20,5 °C`); the chip carries `role="img"` with an accessible label while the house icon itself is decorative and hidden from assistive technology; the whole chip (icon included) is hidden when the option is off or the value is unavailable.
 - The status line prefers `hvac_action` (for example heating/cooling/off) and uses Home Assistant formatting/localization when available, falling back to a readable label; it also appends humidity when `show_humidity_chip` is enabled (independently of `show_state_chip`, using the same locale number formatting as temperatures) and a short relative time from `last_changed`/`last_updated` when `show_state_chip` is enabled.
 - The setpoint button opens the entity details (`hass-more-info`); minus/plus call `climate.set_temperature` through the existing step logic, and the calendar button opens the same weekly schedule editor.
-- Names, status, and controls truncate without overflowing the card; on very narrow widths the control cluster is shrinkable with scrollable overflow, so it yields width instead of being clipped and the calendar button stays reachable.
+- Names/status give up width first and truncate with ellipses; the status and relative time remain separated by a visible bullet. Controls remain grouped on one line and scroll horizontally only when their full width does not fit, keeping every control (including an opt-in calendar button) reachable without horizontal overflow of the card.
 - Colors follow the active Home Assistant theme; no dark-only palette is hardcoded.
 
 The `compact` layout keeps the previous fixed two-row card: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained. In `row`, the HVAC mode dropdown is not rendered; modes remain changeable from the entity details opened by the setpoint, and `compact` keeps the inline dropdown.

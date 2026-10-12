@@ -1,7 +1,7 @@
 {
   "domain": "bubble_climate_scheduler",
   "name": "Bubble Climate Scheduler",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "documentation": "https://github.com/kerdx/bubble-climate-card",
   "issue_tracker": "https://github.com/kerdx/bubble-climate-card/issues",
   "dependencies": ["frontend", "http"],

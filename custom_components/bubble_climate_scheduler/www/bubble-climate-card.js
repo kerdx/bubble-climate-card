@@ -291,8 +291,9 @@ export class BubbleClimateCard extends HTMLElementBase {
       .meta{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden}
       .title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .status{font-size:12px;color:var(--secondary-text-color);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:8px 12px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
-      .current ha-icon{--mdc-icon-size:15px;display:block;color:var(--secondary-text-color)}
+      .current{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:9px 13px;border-radius:999px;background:var(--secondary-background-color);color:var(--primary-text-color);white-space:nowrap}
+      .current[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+      .current ha-icon{--mdc-icon-size:15px;display:block;color:currentColor;opacity:.85}
       .current span{white-space:nowrap}
       .row [hidden]{display:none!important}
       .controls{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;background:transparent;padding:0;max-width:100%;overflow-x:auto;overflow-y:hidden}
@@ -300,7 +301,9 @@ export class BubbleClimateCard extends HTMLElementBase {
       .controls button:hover{background:var(--divider-color)}
       .controls button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
       .controls button:disabled{opacity:.45;cursor:default;background:var(--secondary-background-color)}
-      .controls .setpoint{font-weight:600;min-width:62px;text-align:center}
+      .controls .setpoint{font-weight:600;min-width:58px;text-align:center;background:transparent;font-size:15px;padding:8px 2px}
+      .controls .setpoint:hover{background:transparent}
+      .controls .setpoint:focus-visible{outline-offset:0;border-radius:10px}
       .controls .schedule{display:grid;place-items:center;padding:8px 11px}
       .controls .schedule ha-icon{--mdc-icon-size:18px;display:block}
       @media(max-width:420px){ha-card{padding:8px 10px}.row{gap:8px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 9px}.controls{gap:6px}.controls button{padding:6px 9px;font-size:13px}.controls .setpoint{min-width:54px}.controls .schedule{padding:6px 8px}}
@@ -325,6 +328,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     const currentIcon = currentEl.querySelector('ha-icon');
     currentIcon.setAttribute('icon', 'mdi:home-thermometer');
     currentIcon.setAttribute('aria-hidden', 'true');
+    currentEl.dataset.active = String(active && !unavailable);
     const currentText = currentEl.querySelector('span');
     if (c.show_current_temperature_chip && !unavailable && currentValue !== null) {
       const currentDisplay = `${formatNumber(currentValue, locale)}${unit}`;

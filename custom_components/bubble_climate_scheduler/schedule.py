@@ -10,6 +10,9 @@ from typing import Any
 
 _TIME = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _SLOT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# Modes a program may set. heat_cool is excluded because a program uses a
+# single target temperature, which heat_cool cannot accept.
+_SCHEDULABLE_MODES = ("off", "heat", "cool", "auto", "dry", "fan_only")
 
 
 class ScheduleError(ValueError):
@@ -26,6 +29,40 @@ def availability_action(enabled: bool, has_active_slot: bool, old_state: Any, ne
     if old_state in unavailable:
         return "retry"
     return None
+
+
+# Attributes whose change can invalidate a cached validation outcome: mode,
+# advertised modes, and the temperature grid. A program blocked because its
+# hvac_mode is not exposed yet retries as soon as the entity reports another
+# hvac_modes list, so no Home Assistant object is needed to decide that.
+CONFIG_ATTRIBUTES = ("hvac_mode", "hvac_modes", "min_temp", "max_temp", "target_temp_step")
+
+
+def entity_config_changed(
+    old_attributes: Any,
+    new_attributes: Any,
+    old_state: Any = None,
+    new_state: Any = None,
+) -> bool:
+    """Return whether a state event may unblock a validation-rejected program.
+
+    ``old_attributes is None`` marks the first event of an entity, where there
+    is no previous configuration to compare. Unrelated attribute churn (name,
+    icon, friendly_name, ...) must not trigger a retry, and only transitions
+    into or out of ``heat_cool`` count as a relevant state change.
+    """
+    if old_attributes is None:
+        return True
+    if new_attributes is None:
+        return False
+    if any(old_attributes.get(key) != new_attributes.get(key) for key in CONFIG_ATTRIBUTES):
+        return True
+    return bool(
+        old_state is not None
+        and new_state is not None
+        and old_state != new_state
+        and "heat_cool" in (old_state, new_state)
+    )
 
 
 def snapshot_entity_state(entity_id: str, mappings: tuple[dict[str, Any], ...], sets: tuple[set[str], ...] = ()) -> tuple[Any, ...]:
@@ -68,6 +105,14 @@ def _temperature(value: Any) -> float:
     return result
 
 
+def _hvac_mode(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in _SCHEDULABLE_MODES:
+        raise ScheduleError("hvac_mode must be one of " + ", ".join(_SCHEDULABLE_MODES))
+    return value
+
+
 def validate_target(target: Any, minimum: Any, maximum: Any, step: Any) -> float:
     """Validate limits and grid alignment without silently rounding."""
     value = _temperature(target)
@@ -107,7 +152,7 @@ def target_needs_update(current: Any, target: float, step: float) -> bool:
     return not math.isclose(current_value, target_value, abs_tol=tolerance, rel_tol=0)
 
 
-def validate_program(slots: Any, enabled: Any = False) -> dict[str, Any]:
+def validate_program(slots: Any, enabled: Any = False, away_temperature: Any = None, hvac_mode: Any = None) -> dict[str, Any]:
     if not isinstance(enabled, bool):
         raise ScheduleError("enabled must be boolean")
     if not isinstance(slots, list):
@@ -116,6 +161,15 @@ def validate_program(slots: Any, enabled: Any = False) -> dict[str, Any]:
         raise ScheduleError("A program may contain at most 50 slots")
     if enabled and not slots:
         raise ScheduleError("An enabled program must contain at least one slot")
+    away: float | None
+    if away_temperature is None:
+        away = None
+    else:
+        try:
+            away = _temperature(away_temperature)
+        except ScheduleError as err:
+            raise ScheduleError("Outside schedule temperature must be a finite number") from err
+    mode = _hvac_mode(hvac_mode)
     result: list[dict[str, Any]] = []
     ids: set[str] = set()
     occupied: dict[int, list[tuple[int, int, str]]] = {day: [] for day in range(1, 8)}
@@ -151,7 +205,7 @@ def validate_program(slots: Any, enabled: Any = False) -> dict[str, Any]:
                     if lo < old_hi and old_lo < hi:
                         raise ScheduleError(f"Slots {old_id} and {slot_id} overlap")
                 occupied[target_day].append((lo, hi, slot_id))
-    return {"enabled": enabled, "slots": result}
+    return {"enabled": enabled, "slots": result, "away_temperature": away, "hvac_mode": mode}
 
 
 def active_slot(slots: list[dict[str, Any]], now: datetime) -> dict[str, Any] | None:
@@ -172,6 +226,27 @@ def program_status(slots: list[dict[str, Any]], enabled: bool, now: datetime) ->
     if not enabled:
         return None, None
     return active_slot(slots, now), next_boundary(slots, now)
+
+
+# Applied-state kind for the outside-schedule target. User slot ids must start
+# with an alphanumeric character, so this cannot collide with a real slot id.
+AWAY_TARGET = "__away__"
+
+
+def resolve_target(slots: list[dict[str, Any]], away_temperature: Any, now: datetime) -> tuple[str | None, float | None]:
+    """Return the target to apply as ``(kind, temperature)`` at ``now``.
+
+    The kind is the active slot id, :data:`AWAY_TARGET` when only the
+    outside-schedule temperature applies, or ``None`` when the program leaves
+    the entity untouched (no active slot and no outside-schedule temperature).
+    A manual target change then stands until the kind changes.
+    """
+    slot = active_slot(slots, now)
+    if slot is not None:
+        return slot["id"], float(slot["temperature"])
+    if away_temperature is not None:
+        return AWAY_TARGET, float(away_temperature)
+    return None, None
 
 
 def next_boundary(slots: list[dict[str, Any]], now: datetime) -> datetime | None:

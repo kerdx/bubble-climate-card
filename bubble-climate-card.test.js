@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, hvacToggleMode, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, effectiveStep, normalizeLayout, isClimateActive, climateStatusKey, statusLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, hvacToggleMode, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, sameCardConfig, effectiveStep, normalizeLayout, isClimateActive, isScheduleEnabled, awayTemperaturePayload, schedulableModes, climateStatusKey, statusLabel, modeLabel, resolveLanguage, cardStrings, fieldLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -10,7 +10,7 @@ test('module imports without browser DOM and exports the card class', () => {
 
 test('row status and temperatures preserve readable separators and spacing', () => {
   assert.deepEqual(rowStatusParts({ statusText: 'Off', relativeText: '1 hour ago' }), ['Off', '1 hour ago']);
-  assert.equal(currentTemperatureDisplay(20.5, '°C', 'it-IT'), '20,5 °C');
+  assert.equal(currentTemperatureDisplay(20.5, '°C', 'it-IT'), `${formatNumber(20.5, 'it-IT')} °C`);
   const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
   assert.match(source, /\.status-line span\+span:before\{content:' · '/);
   assert.match(source, /overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain/);
@@ -23,12 +23,37 @@ test('editor schema exposes climate entity and all supported visual options', ()
   for (const name of ['entity', 'name', 'icon', 'layout', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
   assert.deepEqual(configSchema.find((field) => field.name === 'layout').selector, { select: { mode: 'dropdown', options: ['bubble', 'compact'] } });
   assert.deepEqual(defaultCardConfig('climate.living_room'), {
-    entity: 'climate.living_room', layout: 'bubble', step: 0.5,
+    entity: 'climate.living_room', layout: 'bubble',
     show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
       show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
   });
   assert.equal(typeof BubbleClimateCard.getStubConfig, 'function');
   assert.equal(typeof BubbleClimateCard.getConfigElement, 'function');
+});
+
+test('sameCardConfig compares shallow configs so the editor can skip re-rendering', () => {
+  const config = defaultCardConfig('climate.living_room');
+  assert.equal(sameCardConfig(config, { ...config }), true);
+  assert.equal(sameCardConfig(config, { ...config, name: 'Sala' }), false);
+  assert.equal(sameCardConfig({ step: 0.5 }, { step: '0.5' }), false);
+  assert.equal(sameCardConfig(undefined, config), false);
+  assert.equal(sameCardConfig(config, null), false);
+  assert.equal(sameCardConfig(null, null), true);
+  // An absent key and an explicit undefined are equivalent for the editor.
+  assert.equal(sameCardConfig(config, { ...config, extra: undefined }), true);
+  assert.equal(sameCardConfig(config, { ...config, extra: 1 }), false);
+});
+
+test('editor builds the form once and never resets the shadow root (static check, no rendering)', () => {
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const start = source.indexOf('export class BubbleClimateCardEditor');
+  const end = source.indexOf('export class BubbleClimateCard extends');
+  assert.ok(start !== -1 && end !== -1 && start < end);
+  const editor = source.slice(start, end);
+  assert.doesNotMatch(editor, /shadowRoot\.innerHTML\s*=/);
+  assert.match(editor, /if \(this\._form\) this\._form\.hass = value;/);
+  assert.match(editor, /this\.shadowRoot\.append\(form\)/);
+  assert.match(editor, /if \(!sameCardConfig\(this\._formData, this\._config\)\)/);
 });
 
 test('entity suggestion targets climate entities only and includes card type and defaults', () => {
@@ -72,6 +97,67 @@ test('effective step prefers a valid entity step and otherwise uses fallback', (
   assert.equal(clampTarget(21.4, { attributes: { min_temp: 10, max_temp: 30 } }, 0.5), 21.5);
 });
 
+test('an explicitly configured step overrides the entity step', () => {
+  const entity = { state: 'heat', attributes: { min_temp: 10, max_temp: 30, target_temp_step: 1, temperature: 21 } };
+  assert.equal(effectiveStep(entity, 0.5, 0.5), 0.5);
+  assert.equal(effectiveStep(entity, 0.5, '0.5'), 0.5);
+  assert.equal(effectiveStep(entity, 0.5, 1), 1);
+  assert.equal(effectiveStep(entity, 0.5, null), 1);
+  assert.equal(effectiveStep({ attributes: {} }, 0.5, 0.5), 0.5);
+  assert.equal(effectiveStep(entity, 0.5, 0), null);
+  assert.equal(effectiveStep(entity, 0.5, -1), null);
+  assert.equal(effectiveStep(entity, 0.5, 'invalid'), 1);
+  assert.equal(clampTarget(21.4, entity, 0.5, 0.5), 21.5);
+  assert.equal(clampTarget(21.4, entity, 0.5), 21);
+  assert.deepEqual(temperaturePayload(entity, 21.5, 0.5, 0.5), { temperature: 21.5 });
+  assert.deepEqual(temperaturePayload(entity, 21.5, 0.5), { temperature: 22 });
+});
+
+// setConfig only needs attachShadow: with no shadowRoot _render returns early,
+// so the card's step handling can be exercised without a DOM.
+const configuredCard = (config) => {
+  const card = new BubbleClimateCard();
+  card.attachShadow = () => {};
+  card.setConfig(config);
+  return card;
+};
+
+test('new card presets carry no explicit step, so the entity step stays effective', () => {
+  // The preset is not an override: an absent `step` key keeps target_temp_step
+  // in charge and leaves 0.5 as the runtime fallback only.
+  for (const preset of [defaultCardConfig('climate.living_room'), BubbleClimateCard.getStubConfig({ states: {} }), getEntitySuggestion({}, 'climate.living_room')]) {
+    assert.equal(Object.hasOwn(preset, 'step'), false);
+    assert.equal(preset.step, undefined);
+  }
+  const stubCard = configuredCard(BubbleClimateCard.getStubConfig({ states: {} }));
+  assert.equal(stubCard._stepOverride, null);
+  assert.equal(stubCard.config.step, 0.5);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 1 } }, stubCard.config.step, stubCard._stepOverride), 1);
+  assert.equal(effectiveStep({ attributes: {} }, stubCard.config.step, stubCard._stepOverride), 0.5);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: null } }, stubCard.config.step, stubCard._stepOverride), 0.5);
+  assert.deepEqual(
+    temperaturePayload({ state: 'heat', attributes: { min_temp: 10, max_temp: 30, temperature: 21, target_temp_step: 1 } }, 21, stubCard.config.step, stubCard._stepOverride),
+    { temperature: 21 },
+  );
+  const suggestedCard = configuredCard(getEntitySuggestion({}, 'climate.living_room'));
+  assert.equal(suggestedCard._stepOverride, null);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 1 } }, suggestedCard.config.step, suggestedCard._stepOverride), 1);
+});
+
+test('an explicitly configured step still overrides the entity step after the preset change', () => {
+  const entity = { state: 'heat', attributes: { min_temp: 10, max_temp: 30, temperature: 21, target_temp_step: 1 } };
+  const card = configuredCard({ ...defaultCardConfig('climate.living_room'), step: 0.5 });
+  assert.equal(card._stepOverride, 0.5);
+  assert.equal(effectiveStep(entity, card.config.step, card._stepOverride), 0.5);
+  assert.deepEqual(temperaturePayload(entity, 21.5, card.config.step, card._stepOverride), { temperature: 21.5 });
+  assert.deepEqual(temperaturePayload(entity, 21, card.config.step, card._stepOverride), { temperature: 21 });
+  const explicitStepCard = configuredCard({ ...defaultCardConfig('climate.living_room'), step: 1 });
+  assert.equal(explicitStepCard._stepOverride, 1);
+  assert.equal(effectiveStep({ attributes: { target_temp_step: 0.5 } }, explicitStepCard.config.step, explicitStepCard._stepOverride), 1);
+  assert.throws(() => configuredCard({ ...defaultCardConfig('climate.living_room'), step: 0 }), /step must be a number greater than zero/);
+  assert.throws(() => configuredCard({ ...defaultCardConfig('climate.living_room'), step: 'bad' }), /step must be a number greater than zero/);
+});
+
 test('heat_cool model and payload use dual targets and preserve their gap', () => {
   const entity = { state: 'heat_cool', attributes: { min_temp: 5, max_temp: 35, target_temp_step: 0.5, target_temp_low: 18, target_temp_high: 22.5 } };
   assert.deepEqual(targetModel(entity), { dual: true, low: 18, high: 22.5, value: 20.25, min: 5, max: 35, available: true, controllable: true, sliderMin: 7.25, sliderMax: 32.75 });
@@ -109,10 +195,12 @@ test('known target remains readable without numeric limits but is not controllab
 });
 
 test('schedule draft conversion and validation', () => {
-  assert.deepEqual(scheduleDraft({ enabled: true, slots: [{ id: 'a', days: [1, 8, 2], start: '07:30', end: '08:00', temperature: 20 }] }), {
-    enabled: true, slots: [{ id: 'a', days: [1, 2], start: '07:30', end: '08:00', temperature: 20 }],
+  assert.deepEqual(scheduleDraft({ enabled: true, away_temperature: 17, hvac_mode: 'cool', slots: [{ id: 'a', days: [1, 8, 2], start: '07:30', end: '08:00', temperature: 20 }] }), {
+    enabled: true, awayTemperature: 17, hvacMode: 'cool', slots: [{ id: 'a', days: [1, 2], start: '07:30', end: '08:00', temperature: 20 }],
   });
   const draft = scheduleDraft({ slots: [{ id: 'a', days: [1], start: '07:30', end: '08:00', temperature: 20 }] });
+  assert.equal(draft.awayTemperature, null);
+  assert.equal(draft.hvacMode, null);
   assert.equal(validateScheduleDraft(draft), null);
   assert.match(validateScheduleDraft({ ...draft, enabled: 'true' }), /Invalid schedule/);
   assert.match(validateScheduleDraft({ enabled: true, slots: [] }), /needs at least one slot/);
@@ -134,6 +222,34 @@ test('bubble is the default layout and row remains a legacy alias', () => {
   assert.equal(getEntitySuggestion({}, 'climate.living_room').layout, 'bubble');
 });
 
+test('program HVAC mode is validated and filtered to schedulable modes', () => {
+  const draft = scheduleDraft({ enabled: false, slots: [] });
+  for (const hvacMode of [null, '', 'off', 'heat', 'cool', 'auto', 'dry', 'fan_only']) {
+    assert.equal(validateScheduleDraft({ ...draft, hvacMode }), null, `mode ${String(hvacMode)}`);
+  }
+  for (const hvacMode of ['heat_cool', 'banana', true]) {
+    assert.match(validateScheduleDraft({ ...draft, hvacMode }), /Unsupported HVAC mode/);
+  }
+  assert.match(validateScheduleDraft({ ...draft, hvacMode: 'banana' }, cardStrings('it')), /non supportata/);
+  assert.deepEqual(schedulableModes({ attributes: { hvac_modes: ['heat_cool', 'cool', 'heat', 'off'] } }), ['off', 'heat', 'cool']);
+  assert.deepEqual(schedulableModes({ attributes: { hvac_modes: ['fan_only'] } }), ['fan_only']);
+  assert.deepEqual(schedulableModes({ attributes: {} }), ['off', 'heat', 'cool', 'auto', 'dry', 'fan_only']);
+  assert.deepEqual(schedulableModes(undefined), ['off', 'heat', 'cool', 'auto', 'dry', 'fan_only']);
+});
+
+test('outside-schedule temperature validation and payload', () => {
+  const draft = scheduleDraft({ enabled: false, slots: [] });
+  for (const awayTemperature of [17, 17.5, '17.5', '', '   ', null, undefined]) {
+    assert.equal(validateScheduleDraft({ ...draft, awayTemperature }), null, `away ${String(awayTemperature)}`);
+  }
+  for (const awayTemperature of ['warm', 'NaN', {}]) {
+    assert.match(validateScheduleDraft({ ...draft, awayTemperature }), /outside-schedule temperature/i);
+  }
+  assert.equal(awayTemperaturePayload(17), 17);
+  assert.equal(awayTemperaturePayload('17.5'), 17.5);
+  for (const empty of ['', '   ', null, undefined, 'unknown']) assert.equal(awayTemperaturePayload(empty), null);
+});
+
 test('bubble schedule pill is a sibling of temperature controls in markup', () => {
   const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
   const bubbleSection = source.slice(source.indexOf('  _renderRow() {'), source.indexOf('  _renderCompact() {'));
@@ -152,6 +268,16 @@ test('climate active state distinguishes running modes from off and unavailable'
   assert.equal(isClimateActive(null), false);
 });
 
+test('schedule enabled helper tracks the program enabled flag only', () => {
+  assert.equal(isScheduleEnabled({ enabled: true }), true);
+  assert.equal(isScheduleEnabled({ enabled: false }), false);
+  assert.equal(isScheduleEnabled({ enabled: true, slots: [{ id: 'a' }], active_slot_id: null }), true);
+  assert.equal(isScheduleEnabled({ enabled: false, active_slot_id: 'a' }), false);
+  assert.equal(isScheduleEnabled({}), false);
+  assert.equal(isScheduleEnabled(undefined), false);
+  assert.equal(isScheduleEnabled(null), false);
+});
+
 test('status key prefers hvac_action and labels stay readable', () => {
   assert.equal(climateStatusKey({ state: 'heat', attributes: { hvac_action: 'heating' } }), 'heating');
   assert.equal(climateStatusKey({ state: 'heat', attributes: {} }), 'heat');
@@ -163,6 +289,60 @@ test('status key prefers hvac_action and labels stay readable', () => {
   assert.equal(statusLabel('custom_mode'), 'Custom mode');
   assert.equal(statusLabel(''), '');
   assert.equal(statusLabel(null), '');
+});
+
+test('UI strings follow the Home Assistant locale with an English fallback', () => {
+  assert.equal(resolveLanguage('it'), 'it');
+  assert.equal(resolveLanguage('it-IT'), 'it');
+  assert.equal(resolveLanguage('IT-it'), 'it');
+  assert.equal(resolveLanguage('en-US'), 'en');
+  assert.equal(resolveLanguage('de'), 'en');
+  assert.equal(resolveLanguage(undefined), 'en');
+  assert.equal(resolveLanguage(null), 'en');
+  assert.equal(cardStrings('it').saveProgram, 'Salva programma');
+  assert.equal(cardStrings('it').toggleHeating, 'Tocca lo sfondo della scheda per alternare riscaldamento e spento');
+  assert.equal(cardStrings('it').temperatureControls, 'Controlli temperatura');
+  assert.equal(cardStrings('it').dontChange, 'Non cambiare');
+  assert.equal(cardStrings('en').badMode, 'Unsupported HVAC mode.');
+  assert.equal(cardStrings('it-IT').outsideSchedule, 'Fuori orario');
+  assert.equal(cardStrings('de').saveProgram, 'Save program');
+  assert.deepEqual(cardStrings('it').dayPills, ['Lu', 'Ma', 'Me', 'Gi', 'Ve', 'Sa', 'Do']);
+  assert.deepEqual(cardStrings('en').dayPills, ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']);
+  assert.equal(modeLabel('heat', cardStrings('it')), 'Caldo');
+  assert.equal(modeLabel('heat'), 'Heat');
+  assert.equal(modeLabel('fan_only', cardStrings('it')), 'Solo ventilazione');
+  assert.equal(statusLabel('heating', cardStrings('it')), 'Riscaldamento');
+  assert.equal(statusLabel('heating'), 'Heating');
+  assert.equal(fieldLabel(cardStrings('it'), 'entity'), 'Entità climate');
+  assert.equal(fieldLabel(cardStrings('it'), 'unknown_field'), 'unknown field');
+  assert.match(validateScheduleDraft(scheduleDraft({ enabled: true, slots: [] }), cardStrings('it')), /almeno una fascia/);
+  assert.match(validateScheduleDraft(scheduleDraft({ enabled: true, slots: [] })), /needs at least one slot/);
+});
+
+test('schedule day pills use unique short labels while aria-labels stay complete', () => {
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  for (const language of ['en', 'it']) {
+    const strings = cardStrings(language);
+    assert.equal(strings.dayPills.length, 7, `${language} pill labels`);
+    assert.equal(strings.dayNames.length, 7, `${language} day names`);
+    assert.equal(new Set(strings.dayPills).size, 7, `${language} pill labels must be unique`);
+    assert.equal(new Set(strings.dayNames).size, 7, `${language} day names must be unique`);
+    for (const pill of strings.dayPills) assert.equal(pill.length, 2, `${language} pill "${pill}" stays two letters`);
+    for (const name of strings.dayNames) assert.ok(name.length > 2, `${language} name "${name}" stays a full day name`);
+    for (const pill of strings.dayPills) assert.equal(strings.dayNames.includes(pill), false, `${language} pill "${pill}" is not an accessible name`);
+    // First letters alone collide (Mar/Mer, Tue/Thu, Sat/Sun), which is why
+    // the pill text no longer derives from them.
+    assert.ok(new Set(strings.dayNames.map((name) => name[0])).size < 7, `${language} full names collide on their first letter`);
+  }
+  assert.doesNotMatch(source, /pill\.textContent = day\[0\]/);
+  assert.doesNotMatch(source, /t\.days\.forEach/);
+  assert.match(source, /t\.dayNames\.forEach\(\(name, i\) =>/);
+  assert.match(source, /pill\.textContent = t\.dayPills\[i\]/);
+  // The checkbox keeps the complete accessible name and its ISO weekday.
+  assert.match(source, /cb\.setAttribute\('aria-label', name\)/);
+  assert.match(source, /cb\.checked = slot\.days\.includes\(i \+ 1\)/);
+  assert.match(source, /\[\.\.\.slot\.days, i \+ 1\]/);
+  assert.match(source, /slot\.days\.filter\(\(x\) => x !== i \+ 1\)/);
 });
 
 test('relative time uses last change before last update and stays short', () => {
@@ -295,6 +475,22 @@ test('row shadow CSS scopes a hidden rule to .row (static presence check, no ren
   assert.match(rowSection, /\.row\s*\[hidden\][^{]*\{[^}]*display\s*:\s*none\s*!important/);
   const compactSection = source.slice(compactStart);
   assert.doesNotMatch(compactSection, /\.row\s*\[hidden\]/);
+});
+
+test('calendar button accent CSS exists per layout (static presence check, no rendering)', () => {
+  // The calendar button is tinted with the same accent used by the active
+  // current-temperature chip when the schedule program is enabled; verify the
+  // rule is present and scoped in both layouts without rendering.
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const rowStart = source.indexOf('  _renderRow() {');
+  const compactStart = source.indexOf('  _renderCompact() {');
+  assert.ok(rowStart !== -1 && compactStart !== -1 && rowStart < compactStart);
+  const rowSection = source.slice(rowStart, compactStart);
+  const compactSection = source.slice(compactStart);
+  assert.match(rowSection, /\.schedule\[data-active="true"\][^{]*\{[^}]*var\(--bubble-accent-color,var\(--primary-color\)\)/);
+  assert.match(compactSection, /\.head \.schedule\[data-active="true"\][^{]*\{[^}]*var\(--bubble-accent-color,var\(--primary-color\)\)/);
+  assert.match(rowSection, /schedule\.dataset\.active = scheduleActive/);
+  assert.match(compactSection, /schedule\.dataset\.active = scheduleActive/);
 });
 
 const fakeRegistry = (entries = {}) => {
@@ -551,9 +747,9 @@ test('card tap excludes controls and target updates optimistically with service 
  assert.match(source,/\.slider'\)\?\.addEventListener\('change'/);
  assert.doesNotMatch(source,/\.slider'\)\?\.addEventListener\('input',[^;]*_setTemperature/);
  assert.match(source,/this\._optimistic=\{entityId:this\.config\.entity,payload\}/);
- assert.match(source,/this\._render\(\); this\._optimisticTimer=setTimeout/);
+ assert.match(source,/this\._renderPreservingDeltaFocus\(\); this\._optimisticTimer=setTimeout/);
  assert.match(source,/Promise\.resolve\(\)\.then\(\(\)=>this\._hass\?\.callService\('climate','set_temperature'/);
- assert.match(source,/if\(this\._optimistic===seq\)\{clearTimeout\(this\._optimisticTimer\);this\._optimistic=null;this\._render\(\);\}/);
+ assert.match(source,/if\(this\._optimistic===seq\)\{clearTimeout\(this\._optimisticTimer\);this\._optimistic=null;this\._renderPreservingDeltaFocus\(\);\}/);
  assert.match(source,/catch\(\(\)=>/);
 });
 
@@ -562,6 +758,139 @@ test('optimistic target model uses the service payload for single and dual targe
  const payload=temperaturePayload(single,22,0.5); assert.deepEqual(payload,{temperature:22});
  assert.equal(targetModel({...single,attributes:{...single.attributes,...payload}}).value,22);
  const dual={state:'heat_cool',attributes:{target_temp_low:18,target_temp_high:22,min_temp:5,max_temp:30,target_temp_step:1}};
- const dualPayload=temperaturePayload(dual,23,0.5); assert.deepEqual(dualPayload,{target_temp_low:19,target_temp_high:23});
- assert.deepEqual([targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).low,targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).high],[19,23]);
+ const dualPayload=temperaturePayload(dual,23,0.5); assert.deepEqual(dualPayload,{target_temp_low:21,target_temp_high:25});
+ assert.deepEqual([targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).low,targetModel({...dual,attributes:{...dual.attributes,...dualPayload}}).high],[21,25]);
+});
+
+test('every card rebuild restores focus on an active +/- delta and never steals it', async (t) => {
+  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+
+  // Static wiring: all four rebuild paths (hass tick, optimistic render, the
+  // 8s timeout and the service rollback) go through the same wrapper, so a
+  // later re-render cannot drop focus that the first one already restored.
+  assert.match(source, /set hass\(hass\) \{ this\._hass = hass; this\._reconcileOptimistic\(\); this\._renderPreservingDeltaFocus\(\); \}/);
+  const cardStart = source.indexOf('export class BubbleClimateCard extends');
+  const configStart = source.indexOf('  setConfig(config) {', cardStart);
+  const hassStart = source.indexOf('  set hass(hass)', configStart);
+  assert.ok(configStart !== -1 && hassStart > configStart, 'card config setter exists');
+  assert.match(source.slice(configStart, hassStart), /this\._renderPreservingDeltaFocus\(\)/);
+  assert.match(source, /this\._optimistic=\{entityId:this\.config\.entity,payload\}; this\._renderPreservingDeltaFocus\(\); this\._optimisticTimer=setTimeout/);
+  assert.match(source, /this\._optimisticTimer=setTimeout\(\(\)=>\{this\._optimistic=null;this\._optimisticTimer=null;this\._renderPreservingDeltaFocus\(\);\},8000\)/);
+  assert.match(source, /if\(this\._optimistic===seq\)\{clearTimeout\(this\._optimisticTimer\);this\._optimistic=null;this\._renderPreservingDeltaFocus\(\);\}/);
+  // The wrapper captures the delta before the swap and restores it after it.
+  const wrapStart = source.indexOf('_renderPreservingDeltaFocus() {');
+  assert.ok(wrapStart !== -1, 'wrapper exists');
+  const wrap = source.slice(wrapStart, source.indexOf('_setTemperature(', wrapStart));
+  const capture = wrap.indexOf('const delta = this._focusedDelta();');
+  const rebuild = wrap.indexOf('this._render();');
+  const restore = wrap.indexOf('this._restoreDeltaFocus(delta);');
+  assert.ok(capture !== -1 && rebuild !== -1 && restore !== -1, 'capture, render and restore all present');
+  assert.ok(capture < rebuild && rebuild < restore, 'capture happens before the render and restore after it');
+  assert.match(source, /activeElement\?\.dataset\?\.delta/);
+  assert.match(source, /root\.querySelector\(`\[data-delta="\$\{delta\}"\]`\)\?\.focus\?\.\(\)/);
+
+  // Behavioural checks without a DOM: a fake shadow root records every step.
+  const delta = { dataset: { delta: '-0.5' } };
+  const restored = ['activeElement', 'render', 'activeElement', 'query [data-delta="-0.5"]', 'focus'];
+  const newHarness = (callService = () => {}) => {
+    const card = configuredCard(defaultCardConfig('climate.living_room'));
+    const order = [];
+    const focusState = { active: null };
+    const shadow = { querySelector: (selector) => { order.push(`query ${selector}`); return selector === '[data-delta="-0.5"]' ? { focus: () => order.push('focus') } : null; } };
+    Object.defineProperty(shadow, 'activeElement', { get: () => { order.push('activeElement'); return focusState.active; }, configurable: true });
+    Object.defineProperty(card, 'shadowRoot', { value: shadow, configurable: true });
+    card._render = () => order.push('render');
+    card._hass = {
+      states: { 'climate.living_room': { state: 'heat', attributes: { temperature: 21, min_temp: 7, max_temp: 30, target_temp_step: 0.5 } } },
+      callService,
+    };
+    t.after(() => card.disconnectedCallback());
+    return { card, order, focusState };
+  };
+  const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+  // Swap setTimeout just for the scheduling call, so the 8s optimistic timer
+  // can be fired by hand instead of waiting or mocking global timers.
+  const scheduleOf = (run) => {
+    const scheduled = [];
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms) => { scheduled.push({ fn, ms }); return scheduled.length; };
+    try { run(); } finally { globalThis.setTimeout = realSetTimeout; }
+    return scheduled;
+  };
+
+  // Optimistic render, then a hass tick, then the 8s timeout: the delta that
+  // owns focus keeps it through every rebuild.
+  const kept = newHarness();
+  kept.focusState.active = delta;
+  const timers = scheduleOf(() => kept.card._setTemperature(20.5, null));
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 8000);
+  assert.deepEqual(kept.order, restored);
+  await flush();
+  kept.order.length = 0;
+  kept.card.hass = { ...kept.card._hass, states: { ...kept.card._hass.states } };
+  assert.deepEqual(kept.order, restored, 'hass update restores the delta focus');
+  kept.order.length = 0;
+  timers[0].fn();
+  assert.deepEqual(kept.order, restored, 'optimistic timeout restores the delta focus');
+
+  // The same timer with focus already moved to a plain control: no restore.
+  kept.order.length = 0;
+  kept.focusState.active = { dataset: {} };
+  const second = scheduleOf(() => kept.card._setTemperature(22, null));
+  assert.deepEqual(kept.order, ['activeElement', 'render']);
+  kept.order.length = 0;
+  second[0].fn();
+  assert.deepEqual(kept.order, ['activeElement', 'render']);
+
+  // Service rollback re-renders too, and behaves the same way.
+  const failing = newHarness(() => Promise.reject(new Error('service failed')));
+  failing.focusState.active = delta;
+  scheduleOf(() => failing.card._setTemperature(21, null));
+  failing.order.length = 0;
+  await flush();
+  assert.equal(failing.card._optimistic, null, 'rollback clears the optimistic payload');
+  assert.deepEqual(failing.order, restored, 'rollback restores the delta focus');
+
+  const failingUnfocused = newHarness(() => Promise.reject(new Error('service failed')));
+  scheduleOf(() => failingUnfocused.card._setTemperature(21, null));
+  failingUnfocused.order.length = 0;
+  await flush();
+  assert.deepEqual(failingUnfocused.order, ['activeElement', 'render']);
+
+  // A live control that still owns focus after the swap keeps it: nothing is
+  // queried and nothing is refocused.
+  const keptLive = newHarness();
+  keptLive.focusState.active = { dataset: { delta: '-0.5' }, isConnected: true };
+  keptLive.card.hass = { ...keptLive.card._hass, states: { ...keptLive.card._hass.states } };
+  assert.deepEqual(keptLive.order, ['activeElement', 'render', 'activeElement']);
+
+  // Focus already moved outside the card: the restore must not steal it back,
+  // while focus dropped to the document body is still handed to the delta.
+  const body = {};
+  globalThis.document = { body, activeElement: { id: 'somewhere-else' } };
+  try {
+    const outside = newHarness();
+    outside.focusState.active = delta;
+    outside.card.hass = { ...outside.card._hass, states: { ...outside.card._hass.states } };
+    assert.deepEqual(outside.order, ['activeElement', 'render', 'activeElement']);
+    globalThis.document.activeElement = body;
+    outside.order.length = 0;
+    outside.card.hass = { ...outside.card._hass, states: { ...outside.card._hass.states } };
+    assert.deepEqual(outside.order, restored);
+  } finally { delete globalThis.document; }
+
+  // A focus target without a delta (the slider, or nothing) is left alone.
+  const plain = newHarness();
+  plain.focusState.active = { dataset: {} };
+  plain.card._setTemperature(21.5, null);
+  assert.deepEqual(plain.order, ['activeElement', 'render']);
+  plain.order.length = 0;
+  plain.focusState.active = null;
+  plain.card._setTemperature(22, null);
+  assert.deepEqual(plain.order, ['activeElement', 'render']);
+  plain.order.length = 0;
+  assert.equal(plain.card._focusedDelta(), null);
+  plain.card._restoreDeltaFocus(null);
+  assert.deepEqual(plain.order, ['activeElement']);
 });

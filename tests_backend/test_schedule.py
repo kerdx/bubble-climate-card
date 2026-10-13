@@ -18,9 +18,14 @@ validate_single_target_mode = schedule.validate_single_target_mode
 next_boundary = schedule.next_boundary
 target_needs_update = schedule.target_needs_update
 program_status = schedule.program_status
+resolve_target = schedule.resolve_target
+AWAY_TARGET = schedule.AWAY_TARGET
 availability_action = schedule.availability_action
 snapshot_entity_state = schedule.snapshot_entity_state
 restore_entity_state = schedule.restore_entity_state
+entity_config_changed = schedule.entity_config_changed
+CONFIG_ATTRIBUTES = schedule.CONFIG_ATTRIBUTES
+ROOT = Path(__file__).parents[1]
 
 
 def slot(slot_id="a", days=None, start="09:00", end="10:00", temperature=21):
@@ -37,6 +42,25 @@ class ScheduleTests(unittest.TestCase):
                 validate_program(slots)
         with self.assertRaises(ScheduleError):
             validate_program([slot(days=[0])])
+
+    def test_away_temperature_validation(self):
+        program = validate_program([slot()], True, 17)
+        self.assertEqual(program["away_temperature"], 17.0)
+        self.assertIsNone(validate_program([slot()])["away_temperature"])
+        self.assertEqual(validate_program([], False, 17)["away_temperature"], 17.0)
+        for bad in (True, "17", float("nan"), float("inf")):
+            with self.subTest(bad=bad), self.assertRaises(ScheduleError):
+                validate_program([slot()], False, bad)
+
+    def test_hvac_mode_validation(self):
+        program = validate_program([slot()], True, None, "cool")
+        self.assertEqual(program["hvac_mode"], "cool")
+        self.assertIsNone(validate_program([slot()])["hvac_mode"])
+        for mode in ("off", "heat", "auto", "dry", "fan_only"):
+            self.assertEqual(validate_program([], False, None, mode)["hvac_mode"], mode)
+        for bad in (True, "", "banana", "heat_cool", 3):
+            with self.subTest(bad=bad), self.assertRaises(ScheduleError):
+                validate_program([slot()], False, None, bad)
 
     def test_same_day_overlap_and_half_open(self):
         with self.assertRaises(ScheduleError):
@@ -91,12 +115,81 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(current["id"], "a")
         self.assertEqual(boundary, datetime(2026, 10, 12, 10, 0))
 
+    def test_resolve_target_prefers_slot_then_away(self):
+        slots = validate_program([slot("day", [1], "09:00", "10:00")], True, 17)["slots"]
+        self.assertEqual(resolve_target(slots, 17, datetime(2026, 10, 12, 9, 30)), ("day", 21.0))
+        self.assertEqual(resolve_target(slots, 17, datetime(2026, 10, 12, 10, 30)), (AWAY_TARGET, 17.0))
+        self.assertEqual(resolve_target(slots, None, datetime(2026, 10, 12, 10, 30)), (None, None))
+        self.assertEqual(resolve_target([], None, datetime(2026, 10, 12, 10, 30)), (None, None))
+        self.assertEqual(resolve_target([], 17, datetime(2026, 10, 12, 10, 30)), (AWAY_TARGET, 17.0))
+
     def test_availability_transitions_require_retry_only_during_active_slot(self):
         self.assertEqual(availability_action(True, True, "heat", "unavailable"), "pending")
         self.assertEqual(availability_action(True, True, "unavailable", "heat"), "retry")
         self.assertIsNone(availability_action(True, False, "unavailable", "heat"))
         self.assertIsNone(availability_action(False, True, "unavailable", "heat"))
         self.assertIsNone(availability_action(True, True, "heat", "heat"))
+
+    def test_entity_config_change_retries_on_hvac_modes_and_key_attributes(self):
+        old = {
+            "hvac_mode": "cool", "hvac_modes": ["off", "cool"],
+            "min_temp": 7, "max_temp": 30, "target_temp_step": 0.5,
+        }
+        # A program rejected because the configured mode is missing retries as
+        # soon as the entity advertises another mode list.
+        self.assertIn("hvac_modes", CONFIG_ATTRIBUTES)
+        self.assertTrue(entity_config_changed(old, {**old, "hvac_modes": ["off", "cool", "heat"]}, "cool", "cool"))
+        self.assertTrue(entity_config_changed(old, {**old, "hvac_modes": None}, "cool", "cool"))
+        # The pre-existing retries stay: configured mode, limits, step and the
+        # transition into or out of heat_cool.
+        for key, value in (("hvac_mode", "heat"), ("min_temp", 5), ("max_temp", 32), ("target_temp_step", 1)):
+            with self.subTest(key=key):
+                self.assertIn(key, CONFIG_ATTRIBUTES)
+                self.assertTrue(entity_config_changed(old, {**old, key: value}, "cool", "cool"))
+        self.assertTrue(entity_config_changed(old, dict(old), "heat_cool", "heat"))
+        self.assertTrue(entity_config_changed(old, dict(old), "heat", "heat_cool"))
+        # An unchanged attribute never causes a retry, and neither does churn
+        # on attributes the validation does not read.
+        self.assertFalse(entity_config_changed(old, dict(old), "cool", "cool"))
+        self.assertFalse(entity_config_changed(old, {**old, "friendly_name": "Kitchen", "icon": "mdi:radiator"}, "cool", "cool"))
+        self.assertFalse(entity_config_changed(old, dict(old), "heat", "cool"))
+        self.assertFalse(entity_config_changed(old, dict(old), "heat", "idle"))
+        # First appearance of the entity has no previous configuration.
+        self.assertTrue(entity_config_changed(None, old, None, "cool"))
+
+    def test_state_changed_routes_hvac_modes_retry_through_pure_helper(self):
+        """The HA listener must delegate its comparison so hvac_modes counts."""
+        init_path = ROOT / "custom_components/bubble_climate_scheduler/__init__.py"
+        source = init_path.read_text(encoding="utf-8")
+        module = ast.parse(source)
+        handlers = [
+            node for node in ast.walk(module)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_state_changed"
+        ]
+        self.assertEqual(len(handlers), 1)
+        calls = [
+            node for node in ast.walk(handlers[0])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "entity_config_changed"
+        ]
+        self.assertEqual(len(calls), 1)
+        args = [
+            arg for arg in ast.walk(calls[0])
+            if isinstance(arg, ast.Attribute) and isinstance(arg.value, ast.Name)
+        ]
+        self.assertIn(("new", "attributes"), [(arg.value.id, arg.attr) for arg in args])
+        self.assertIn(("new", "state"), [(arg.value.id, arg.attr) for arg in args])
+        self.assertIn(("old", "attributes"), [(arg.value.id, arg.attr) for arg in args])
+        self.assertIn(("old", "state"), [(arg.value.id, arg.attr) for arg in args])
+        # The retry stays gated: a config change alone re-evaluates only while
+        # a validation error blocks the program.
+        self.assertIn("if config_changed and validation_blocked:", source)
+
+    def test_readme_outside_slot_rule_separates_mode_call_from_target(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotRegex(readme, r"(?i)outside slots no call is made")
+        self.assertRegex(readme, r"(?i)no \*\*target temperature\*\* call is made unless \*\*Outside schedule\*\*")
+        self.assertRegex(readme, r"`set_hvac_mode` is still sent outside the slots")
+        self.assertRegex(readme, r"(?i)blocked because the entity does not expose the configured \*\*Mode\*\* is retried when the entity reports a new mode list \(`hvac_modes`\)")
 
     def test_entity_snapshot_rolls_back_mapping_and_set_state(self):
         programs = {"climate.room": {"enabled": True, "slots": [{"id": "old"}]}}

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.0
+
+- Add an optional HVAC mode to a saved program: the scheduler applies `climate.set_hvac_mode` before the slot target, validates the mode against the entity's exposed `hvac_modes`, and leaves the current mode untouched when none is set. Schedulable program modes are `off`, `heat`, `cool`, `auto`, `dry`, and `fan_only`; `heat_cool` stays unsupported because a program uses a single target, and `off` sets the mode without a target.
+- Add an optional outside-schedule temperature (`away_temperature`) applied whenever no slot is active; programs without it keep the previous behavior of no climate call outside slots. The outside target is validated together with the slot targets against the entity's limits and step.
+- Track the applied program state by mode plus target kind, so a manual mode or target change still stands until the next slot boundary (including the outside-schedule target); availability handling treats mode-only and outside-target programs as active for pending retries.
+- Extend the `save_program` service with the optional `away_temperature` and `hvac_mode` fields and document them in `services.yaml`.
+- Extend the weekly schedule editor with an HVAC mode selector (default "Don't change", limited to the modes the entity exposes and the backend accepts) and an "Outside schedule" temperature field; both are validated in the editor and saved with the program.
+- Localize the card and its schedule editor in English and Italian, following `hass.locale.language` with an English fallback: control aria labels, editor labels and actions, day names, HVAC mode and status labels, and validation messages.
+- Retry mode validation when a climate entity advertises an updated `hvac_modes` list; preserve keyboard focus after optimistic +/- updates and use distinct two-letter weekday pills.
+- Honor an explicit card `step` as an override: a `step` set in the card configuration now takes precedence over the entity's `target_temp_step` (previously the entity step always won); new card presets omit `step` so the entity's increment is respected by default, with 0.5 as fallback.
+- Tint the schedule calendar button with the accent color while the entity's program is enabled, in both card layouts (`bubble` and `compact`); the tint follows the program's enabled state on the card button only and is not applied inside the schedule editor dialog.
+- Add backend and frontend tests for the new program fields, the step override, and the localized strings.
+
 ## v0.1.9
 
 - Toggle between `heat` and `off` by tapping a non-interactive card area or pressing Enter/Space, only when both modes are supported; child controls do not trigger the toggle.

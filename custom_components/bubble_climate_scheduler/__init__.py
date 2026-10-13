@@ -21,10 +21,11 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, FRONTEND_URL, PLATFORMS, STORAGE_KEY, STORAGE_VERSION
 from .schedule import (
     ScheduleError,
-    active_slot,
     availability_action,
+    entity_config_changed,
     validate_program,
     program_status,
+    resolve_target,
     validate_single_target_mode,
     validate_target,
     target_needs_update,
@@ -67,7 +68,7 @@ class Scheduler:
             try:
                 if not isinstance(entity_id, str) or not entity_id.startswith("climate."):
                     continue
-                program = validate_program(raw["slots"], raw.get("enabled", False))
+                program = validate_program(raw["slots"], raw.get("enabled", False), raw.get("away_temperature"), raw.get("hvac_mode"))
                 self.programs[entity_id] = program
                 self.errors[entity_id] = raw.get("last_error")
             except (KeyError, ScheduleError, TypeError):
@@ -111,13 +112,13 @@ class Scheduler:
             }
         return result
 
-    async def async_set_program(self, entity_id: str, enabled: bool, slots: list[dict[str, Any]]) -> None:
+    async def async_set_program(self, entity_id: str, enabled: bool, slots: list[dict[str, Any]], away_temperature: Any = None, hvac_mode: Any = None) -> None:
         try:
-            program = validate_program(slots, enabled)
+            program = validate_program(slots, enabled, away_temperature, hvac_mode)
             if enabled:
                 state = self.hass.states.get(entity_id)
                 if state is not None and state.state not in ("unavailable", "unknown"):
-                    _validate_climate_target(state, program["slots"])
+                    _validate_program(state, program)
         except (ScheduleError, HomeAssistantError) as err:
             raise ScheduleValidationError(str(err)) from err
         async with self._evaluation_lock:
@@ -144,7 +145,7 @@ class Scheduler:
                 state = self.hass.states.get(entity_id)
                 if state is not None and state.state not in ("unavailable", "unknown"):
                     try:
-                        _validate_climate_target(state, self.programs[entity_id]["slots"])
+                        _validate_program(state, self.programs[entity_id])
                     except HomeAssistantError as err:
                         raise ScheduleValidationError(str(err)) from err
             snapshot = self._snapshot_entity(entity_id)
@@ -195,15 +196,18 @@ class Scheduler:
                 program = self.programs.get(entity_id)
                 if not program or not program["enabled"]:
                     continue
-                slot = active_slot(program["slots"], now)
-                slot_id = slot["id"] if slot else None
-                if slot is None:
+                target_kind, target = resolve_target(program["slots"], program.get("away_temperature"), now)
+                mode = program.get("hvac_mode")
+                if target_kind is None and mode is None:
                     self.applied_slot[entity_id] = None
                     self.pending.discard(entity_id)
                     self.errors[entity_id] = None
                     self._last_logged_error.pop(entity_id, None)
                     continue
-                if entity_id not in self.pending and self.applied_slot.get(entity_id, object()) == slot_id:
+                # The applied key covers the mode too: a manual mode or target
+                # change still stands until the next slot boundary.
+                apply_key = f"{mode or '-'}|{target_kind or '-'}"
+                if entity_id not in self.pending and self.applied_slot.get(entity_id, object()) == apply_key:
                     continue
                 state = self.hass.states.get(entity_id)
                 if state is None or state.state in ("unavailable", "unknown"):
@@ -211,22 +215,29 @@ class Scheduler:
                     self._set_error(entity_id, "Climate entity is unavailable; target is pending")
                     continue
                 try:
-                    _validate_climate_target(state, [slot])
+                    if mode is not None:
+                        _validate_hvac_mode(state, mode)
+                    if target is not None and mode != "off":
+                        _validate_climate_target(state, [target], mode)
                 except HomeAssistantError as err:
                     # A permanent validation failure is retried on config/state change,
                     # but not on every minute tick.
                     self.pending.discard(entity_id)
-                    self.applied_slot[entity_id] = slot_id
+                    self.applied_slot[entity_id] = apply_key
                     self._set_error(entity_id, str(err), log=True)
                     continue
                 try:
-                    target = float(slot["temperature"])
-                    current = state.attributes.get("temperature")
-                    if target_needs_update(current, target, _step(state)):
-                        await self.hass.services.async_call("climate", "set_temperature", {
-                            "entity_id": entity_id, "temperature": target,
+                    if mode is not None and state.state != mode:
+                        await self.hass.services.async_call("climate", "set_hvac_mode", {
+                            "entity_id": entity_id, "hvac_mode": mode,
                         }, blocking=True)
-                    self.applied_slot[entity_id] = slot_id
+                    if target is not None and mode != "off":
+                        current = state.attributes.get("temperature")
+                        if target_needs_update(current, target, _step(state)):
+                            await self.hass.services.async_call("climate", "set_temperature", {
+                                "entity_id": entity_id, "temperature": target,
+                            }, blocking=True)
+                    self.applied_slot[entity_id] = apply_key
                     self.pending.discard(entity_id)
                     self.errors[entity_id] = None
                     self._last_logged_error.pop(entity_id, None)
@@ -249,7 +260,8 @@ class Scheduler:
             if not program:
                 return
             now = dt_util.now()
-            active = program["enabled"] and active_slot(program["slots"], now) is not None
+            has_target = resolve_target(program["slots"], program.get("away_temperature"), now)[0] is not None
+            active = program["enabled"] and (has_target or program.get("hvac_mode") is not None)
             old_state = old.state if old else None
             action = availability_action(program["enabled"], active, old_state, new.state)
             if action == "pending":
@@ -261,10 +273,12 @@ class Scheduler:
                 # event/tick managed to mark the entity pending.
                 self.pending.add(entity_id)
                 retry = True
-            config_changed = old is None or any(
-                old.attributes.get(key) != new.attributes.get(key)
-                for key in ("hvac_mode", "min_temp", "max_temp", "target_temp_step")
-            ) or (old is not None and old.state != new.state and "heat_cool" in (old.state, new.state))
+            config_changed = entity_config_changed(
+                old.attributes if old is not None else None,
+                new.attributes,
+                old.state if old is not None else None,
+                new.state,
+            )
             validation_blocked = bool(self.errors.get(entity_id)) and entity_id not in self.pending
             if config_changed and validation_blocked:
                 self.applied_slot.pop(entity_id, None)
@@ -291,15 +305,41 @@ def _strict_bool(value: Any) -> bool:
     return value
 
 
-def _validate_climate_target(state: Any, slots: list[dict[str, Any]]) -> None:
+def _program_temperatures(program: dict[str, Any]) -> list[Any]:
+    """Slot targets plus the optional away target, validated together."""
+    temperatures: list[Any] = [slot["temperature"] for slot in program["slots"]]
+    away = program.get("away_temperature")
+    if away is not None:
+        temperatures.append(away)
+    return temperatures
+
+
+def _validate_hvac_mode(state: Any, mode: str) -> None:
+    """Reject a program mode the entity does not expose."""
+    modes = state.attributes.get("hvac_modes")
+    if isinstance(modes, list) and modes and mode not in modes:
+        raise HomeAssistantError(f"HVAC mode {mode} is not available for this climate entity")
+
+
+def _validate_program(state: Any, program: dict[str, Any]) -> None:
+    """Validate the program's mode and targets against the entity."""
+    mode = program.get("hvac_mode")
+    if mode is not None:
+        _validate_hvac_mode(state, mode)
+    if mode == "off":
+        return
+    _validate_climate_target(state, _program_temperatures(program), mode)
+
+
+def _validate_climate_target(state: Any, temperatures: list[Any], mode: Any = None) -> None:
     try:
-        validate_single_target_mode(state.state, state.attributes.get("hvac_mode"))
+        validate_single_target_mode(mode if mode is not None else state.state, None if mode is not None else state.attributes.get("hvac_mode"))
     except ScheduleError as err:
         raise HomeAssistantError(str(err)) from err
     step = _step(state)
-    for slot in slots:
+    for target in temperatures:
         try:
-            validate_target(slot["temperature"], state.attributes["min_temp"], state.attributes["max_temp"], step)
+            validate_target(target, state.attributes["min_temp"], state.attributes["max_temp"], step)
         except ScheduleError as err:
             raise HomeAssistantError(str(err)) from err
 
@@ -324,13 +364,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: Any) -> bool:
         vol.Required("climate_entity"): schema_entity,
         vol.Required("enabled"): _strict_bool,
         vol.Required("slots"): list,
+        vol.Optional("away_temperature"): vol.Any(None, int, float),
+        vol.Optional("hvac_mode"): vol.Any(None, str),
     })
     enabled_schema = vol.Schema({vol.Required("climate_entity"): schema_entity, vol.Required("enabled"): _strict_bool})
     delete_schema = vol.Schema({vol.Required("climate_entity"): schema_entity})
 
     async def save(call: ServiceCall) -> None:
         try:
-            await scheduler.async_set_program(call.data["climate_entity"], call.data["enabled"], call.data["slots"])
+            await scheduler.async_set_program(call.data["climate_entity"], call.data["enabled"], call.data["slots"], call.data.get("away_temperature"), call.data.get("hvac_mode"))
         except ScheduleValidationError as err:
             entity = call.data.get("climate_entity")
             if entity:

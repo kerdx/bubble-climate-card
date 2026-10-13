@@ -3,8 +3,136 @@ export const numeric = (v) => {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 };
-export const modeLabel = (mode) => ({ heat: 'Heat', cool: 'Cool', off: 'Off', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' }[mode] || String(mode ?? '').replaceAll('_', ' '));
-export const effectiveStep = (entity, fallback = 0.5) => {
+// Card UI strings. The active language follows hass.locale.language; languages
+// other than Italian fall back to English.
+const STRINGS = {
+  en: {
+    unavailable: 'Unavailable',
+    entityUnavailable: 'Entity unavailable',
+    currentTemperature: (value) => `Current temperature ${value}`,
+    decrease: 'Decrease target temperature',
+    increase: 'Increase target temperature',
+    target: (value, unit) => `Target ${value}${unit}`,
+    targetRange: (low, high, unit) => `Target temperature range ${low} to ${high}${unit}`,
+    targetUnavailable: 'Target unavailable',
+    openDetails: (label) => `${label}. Open details`,
+    toggleHeating: 'Tap card background to toggle heating',
+    temperatureControls: 'Temperature controls',
+    openSchedule: 'Open schedule details',
+    midpoint: 'Target temperature range midpoint',
+    targetLabel: 'Target temperature',
+    hvacMode: 'HVAC mode',
+    dontChange: 'Do not change',
+    badMode: 'Unsupported HVAC mode.',
+    weeklySchedule: 'Weekly schedule',
+    scheduleAria: 'Weekly climate schedule',
+    close: 'Close',
+    closeSchedule: 'Close schedule editor',
+    backendMissing: 'Scheduler backend is not installed. Install and configure bubble_climate_scheduler to edit a program.',
+    openLegacy: 'Open legacy schedule',
+    nextChange: 'Next change: ',
+    none: 'none',
+    active: (id) => ` · Active: ${id}`,
+    enabled: 'Enabled',
+    outsideSchedule: 'Outside schedule',
+    outsideScheduleAria: 'Outside schedule temperature',
+    outsideScheduleTitle: 'Applied outside the scheduled slots; leave empty to keep the last target.',
+    slot: (index) => `Slot ${index}`,
+    remove: 'Remove',
+    removeSlot: (index) => `Remove slot ${index}`,
+    start: 'Start',
+    end: 'End',
+    targetField: 'Target',
+    addSlot: '+ Add slot',
+    deleteProgram: 'Delete program',
+    saveProgram: 'Save program',
+    // Full day names feed the accessible labels; the visible pill text comes
+    // from dayPills, whose two-letter labels stay unique in this language.
+    dayNames: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    dayPills: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+    invalidSchedule: 'Invalid schedule.',
+    needSlot: 'An enabled schedule needs at least one slot.',
+    awayNumber: 'The outside-schedule temperature must be a number.',
+    slotInvalid: 'Each slot needs days, valid times, and a target; start and end must differ.',
+    fields: {
+      entity: 'Climate entity', name: 'Name', icon: 'Icon', layout: 'Layout', step: 'Step',
+      show_state_chip: 'Show state and relative time', show_current_temperature_chip: 'Show current temperature',
+      show_humidity_chip: 'Show humidity', show_unavailable_badge: 'Show unavailable badge',
+      show_mode_buttons: 'Show HVAC mode selector', show_step_controls: 'Show +/- controls', show_schedule_button: 'Show schedule button',
+    },
+    modes: { heat: 'Heat', cool: 'Cool', off: 'Off', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' },
+    statuses: { heating: 'Heating', cooling: 'Cooling', drying: 'Drying', fan: 'Fan', idle: 'Idle', off: 'Off', preheating: 'Preheating', defrosting: 'Defrosting', heat: 'Heat', cool: 'Cool', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' },
+  },
+  it: {
+    unavailable: 'Non disponibile',
+    entityUnavailable: 'Entità non disponibile',
+    currentTemperature: (value) => `Temperatura attuale ${value}`,
+    decrease: 'Abbassa la temperatura target',
+    increase: 'Alza la temperatura target',
+    target: (value, unit) => `Target ${value}${unit}`,
+    targetRange: (low, high, unit) => `Intervallo temperatura target da ${low} a ${high}${unit}`,
+    targetUnavailable: 'Target non disponibile',
+    openDetails: (label) => `${label}. Apri dettagli`,
+    toggleHeating: 'Tocca lo sfondo della scheda per alternare riscaldamento e spento',
+    temperatureControls: 'Controlli temperatura',
+    openSchedule: 'Apri la pianificazione',
+    midpoint: 'Punto medio intervallo temperatura target',
+    targetLabel: 'Temperatura target',
+    hvacMode: 'Modalità HVAC',
+    dontChange: 'Non cambiare',
+    badMode: 'Modalità HVAC non supportata.',
+    weeklySchedule: 'Pianificazione settimanale',
+    scheduleAria: 'Pianificazione climate settimanale',
+    close: 'Chiudi',
+    closeSchedule: 'Chiudi editor pianificazione',
+    backendMissing: 'Backend dello scheduler non installato. Installa e configura bubble_climate_scheduler per modificare un programma.',
+    openLegacy: 'Apri pianificazione legacy',
+    nextChange: 'Prossimo cambio: ',
+    none: 'nessuno',
+    active: (id) => ` · Attiva: ${id}`,
+    enabled: 'Abilitata',
+    outsideSchedule: 'Fuori orario',
+    outsideScheduleAria: 'Temperatura fuori orario',
+    outsideScheduleTitle: 'Applicata fuori dagli orari programmati; lascia vuoto per mantenere l\u2019ultimo target.',
+    slot: (index) => `Fascia ${index}`,
+    remove: 'Rimuovi',
+    removeSlot: (index) => `Rimuovi fascia ${index}`,
+    start: 'Inizio',
+    end: 'Fine',
+    targetField: 'Target',
+    addSlot: '+ Aggiungi fascia',
+    deleteProgram: 'Elimina programma',
+    saveProgram: 'Salva programma',
+    // I nomi completi alimentano gli aria-label; il testo visivo del pill
+    // viene da dayPills, le cui etichette di due lettere restano univoche.
+    dayNames: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+    dayPills: ['Lu', 'Ma', 'Me', 'Gi', 'Ve', 'Sa', 'Do'],
+    invalidSchedule: 'Pianificazione non valida.',
+    needSlot: 'Una pianificazione abilitata richiede almeno una fascia.',
+    awayNumber: 'La temperatura fuori orario deve essere un numero.',
+    slotInvalid: 'Ogni fascia richiede giorni, orari validi e un target; inizio e fine devono essere diversi.',
+    fields: {
+      entity: 'Entità climate', name: 'Nome', icon: 'Icona', layout: 'Layout', step: 'Step (incremento)',
+      show_state_chip: 'Mostra stato e tempo relativo', show_current_temperature_chip: 'Mostra temperatura attuale',
+      show_humidity_chip: 'Mostra umidità', show_unavailable_badge: 'Mostra badge non disponibile',
+      show_mode_buttons: 'Mostra selettore modalità HVAC', show_step_controls: 'Mostra controlli +/−', show_schedule_button: 'Mostra pulsante pianificazione',
+    },
+    modes: { heat: 'Caldo', cool: 'Freddo', off: 'Spento', auto: 'Automatico', heat_cool: 'Caldo / freddo', dry: 'Deumidificazione', fan_only: 'Solo ventilazione' },
+    statuses: { heating: 'Riscaldamento', cooling: 'Raffreddamento', drying: 'Deumidificazione', fan: 'Ventilazione', idle: 'Inattivo', off: 'Spento', preheating: 'Preriscaldamento', defrosting: 'Sbrinamento', heat: 'Caldo', cool: 'Freddo', auto: 'Automatico', heat_cool: 'Caldo / freddo', dry: 'Deumidificazione', fan_only: 'Solo ventilazione' },
+  },
+};
+// Modes a program may set; heat_cool is excluded because a program uses a
+// single target temperature, which heat_cool cannot accept.
+const SCHEDULABLE_MODES = ['off', 'heat', 'cool', 'auto', 'dry', 'fan_only'];
+export const resolveLanguage = (language) => (typeof language === 'string' && language.trim().toLowerCase().startsWith('it') ? 'it' : 'en');
+export const cardStrings = (language) => STRINGS[resolveLanguage(language)];
+export const fieldLabel = (strings, name) => strings.fields[name] || String(name ?? '').replaceAll('_', ' ');
+export const modeLabel = (mode, strings = STRINGS.en) => strings.modes[mode] || String(mode ?? '').replaceAll('_', ' ');
+export const effectiveStep = (entity, fallback = 0.5, override = null) => {
+  // An explicitly configured step wins over the entity's declared step, so a
+  // card can offer 0.5 increments on an entity that declares 1.
+  const overrideValue = numeric(override);
+  if (overrideValue !== null) return overrideValue > 0 ? overrideValue : null;
   const attributes = entity?.attributes || {};
   const raw = attributes.target_temp_step;
   if (raw !== undefined && raw !== null && !(typeof raw === 'string' && ['unknown', 'unavailable'].includes(raw.trim().toLowerCase()))) {
@@ -14,15 +142,19 @@ export const effectiveStep = (entity, fallback = 0.5) => {
   return numeric(fallback);
 };
 
-export const scheduleDraft = (program) => ({ enabled: Boolean(program?.enabled), slots: (Array.isArray(program?.slots) ? program.slots : []).map((slot) => ({
+export const scheduleDraft = (program) => ({ enabled: Boolean(program?.enabled), awayTemperature: program?.away_temperature ?? null, hvacMode: program?.hvac_mode ?? null, slots: (Array.isArray(program?.slots) ? program.slots : []).map((slot) => ({
   id: String(slot.id ?? ''), days: Array.isArray(slot.days) ? slot.days.filter((day) => Number.isInteger(day) && day >= 1 && day <= 7) : [],
   start: String(slot.start ?? '08:00'), end: String(slot.end ?? '09:00'), temperature: slot.temperature,
 })) });
-export const validateScheduleDraft = (draft) => {
-  if (!draft || typeof draft.enabled !== 'boolean' || !Array.isArray(draft.slots)) return 'Invalid schedule.';
-  if (draft.enabled && draft.slots.length === 0) return 'An enabled schedule needs at least one slot.';
+export const validateScheduleDraft = (draft, strings = STRINGS.en) => {
+  if (!draft || typeof draft.enabled !== 'boolean' || !Array.isArray(draft.slots)) return strings.invalidSchedule;
+  if (draft.enabled && draft.slots.length === 0) return strings.needSlot;
+  const away = draft.awayTemperature;
+  if (away !== null && away !== undefined && String(away).trim() !== '' && numeric(away) === null) return strings.awayNumber;
+  const mode = draft.hvacMode;
+  if (mode !== null && mode !== undefined && mode !== '' && !SCHEDULABLE_MODES.includes(mode)) return strings.badMode;
   for (const slot of draft.slots) {
-    if (!slot.id || !Array.isArray(slot.days) || !slot.days.length || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.end) || slot.start === slot.end || slot.temperature === '' || numeric(slot.temperature) === null) return 'Each slot needs days, valid times, and a target; start and end must differ.';
+    if (!slot.id || !Array.isArray(slot.days) || !slot.days.length || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.end) || slot.start === slot.end || slot.temperature === '' || numeric(slot.temperature) === null) return strings.slotInvalid;
   }
   return null;
 };
@@ -43,9 +175,9 @@ export const targetModel = (entity) => {
 };
 const validState = (state) => Boolean(state && !['unknown', 'unavailable'].includes(state));
 
-export const clampTarget = (value, entity, fallbackStep) => {
+export const clampTarget = (value, entity, fallbackStep, overrideStep = null) => {
   const n = numeric(value), a = entity?.attributes || {}, min = numeric(a.min_temp), max = numeric(a.max_temp);
-  const increment = effectiveStep(entity, fallbackStep);
+  const increment = effectiveStep(entity, fallbackStep, overrideStep);
   if (n === null || min === null || max === null || min > max || increment === null || increment <= 0) return null;
   const scale = Math.max(1, Math.abs(min), Math.abs(max), Math.abs(increment));
   const tolerance = Number.EPSILON * scale * 8;
@@ -66,7 +198,7 @@ export const clampTarget = (value, entity, fallbackStep) => {
   return snapped >= min && snapped <= max ? snapped : null;
 };
 
-export const temperaturePayload = (entity, value, step) => {
+export const temperaturePayload = (entity, value, step, overrideStep = null) => {
   const requested = numeric(value);
   if (requested === null || !entity || !validState(entity.state)) return null;
   const attrs = entity?.attributes || {};
@@ -75,7 +207,7 @@ export const temperaturePayload = (entity, value, step) => {
     const low = numeric(attrs.target_temp_low), high = numeric(attrs.target_temp_high);
     const min = numeric(attrs.min_temp), max = numeric(attrs.max_temp);
     if (min === null || max === null || min > max || high - low > max - min) return null;
-    const increment = effectiveStep(entity, step);
+    const increment = effectiveStep(entity, step, overrideStep);
     if (increment === null || increment <= 0) return null;
     const delta = requested - (low + high) / 2;
     const minShiftIndex = Math.ceil((min - low) / increment - 1e-10);
@@ -85,7 +217,7 @@ export const temperaturePayload = (entity, value, step) => {
     const shift = Number((shiftIndex * increment).toFixed(8));
     return { target_temp_low: Number((low + shift).toFixed(8)), target_temp_high: Number((high + shift).toFixed(8)) };
   }
-  const target = clampTarget(requested, entity, step);
+  const target = clampTarget(requested, entity, step, overrideStep);
   return target === null ? null : { temperature: target };
 };
 
@@ -103,17 +235,21 @@ export const isClimateActive = (entityOrState) => {
   if (!trimmed || trimmed === 'unknown' || trimmed === 'unavailable' || trimmed === 'off') return false;
   return true;
 };
+export const isScheduleEnabled = (program) => Boolean(program?.enabled);
+export const awayTemperaturePayload = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  return numeric(value);
+};
 export const climateStatusKey = (entity) => {
   const action = entity?.attributes?.hvac_action;
   if (typeof action === 'string' && action.trim() && valid(action.trim())) return action.trim();
   return typeof entity?.state === 'string' ? entity.state : '';
 };
-const KNOWN_STATUS_LABELS = { heating: 'Heating', cooling: 'Cooling', drying: 'Drying', fan: 'Fan', idle: 'Idle', off: 'Off', preheating: 'Preheating', defrosting: 'Defrosting', heat: 'Heat', cool: 'Cool', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' };
-export const statusLabel = (status) => {
+export const statusLabel = (status, strings = STRINGS.en) => {
   if (typeof status !== 'string') return '';
   const key = status.trim();
   if (!key) return '';
-  if (KNOWN_STATUS_LABELS[key]) return KNOWN_STATUS_LABELS[key];
+  if (strings.statuses[key]) return strings.statuses[key];
   const human = key.replaceAll('_', ' ').trim();
   return human ? human.charAt(0).toUpperCase() + human.slice(1) : '';
 };
@@ -178,12 +314,21 @@ export const currentTemperatureDisplay = (value, unit, locale) => {
   return formatted ? `${formatted} ${unit}` : '';
 };
 const modes = (entity) => Array.isArray(entity?.attributes?.hvac_modes) ? entity.attributes.hvac_modes : [];
+export const schedulableModes = (entity) => {
+  const available = modes(entity);
+  const supported = available.length ? available : SCHEDULABLE_MODES;
+  return SCHEDULABLE_MODES.filter((mode) => supported.includes(mode));
+};
 const HTMLElementBase = globalThis.HTMLElement ?? class {};
 
+// Preset for freshly created cards: it deliberately omits `step`, because a
+// configured step is an explicit override. Without it the card follows the
+// entity's target_temp_step and keeps 0.5 only as the runtime fallback for an
+// entity that declares no step.
 export const defaultCardConfig = (entity = 'climate.example') => ({
-  entity, layout: 'bubble', step: 0.5,
+  entity, layout: 'bubble',
   show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
-    show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
+  show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true,
 });
 export const getEntitySuggestion = (_hass, entityId) => typeof entityId === 'string' && entityId.startsWith('climate.')
   ? { type: 'custom:bubble-climate-card', ...defaultCardConfig(entityId) }
@@ -198,26 +343,48 @@ export const configSchema = [
   { name: 'step', selector: { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } } },
 ];
 
+export const sameCardConfig = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) if (a[key] !== b[key]) return false;
+  return true;
+};
+
 export class BubbleClimateCardEditor extends HTMLElementBase {
-  set hass(value) { this._hass = value; const form = this.shadowRoot?.querySelector('ha-form'); if (form) form.hass = value; }
+  set hass(value) {
+    this._hass = value;
+    // Forward to the existing form instead of rebuilding it: recreating the
+    // form on every hass tick (or config echo) dropped keyboard focus, so
+    // typing a name required one click per letter.
+    if (this._form) this._form.hass = value;
+  }
   setConfig(config) {
     this._config = { ...defaultCardConfig(config?.entity || 'climate.example'), ...config, layout: normalizeLayout(config?.layout) || 'bubble' };
     this._render();
   }
   _render() {
     if (!this.attachShadow) return;
-    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    this.shadowRoot.innerHTML = '<ha-form></ha-form>';
-    const form = this.shadowRoot.querySelector('ha-form');
-    form.hass = this._hass;
-    form.data = { ...this._config };
-    form.schema = configSchema;
-    form.computeLabel = (schema) => ({ entity: 'Climate entity', name: 'Name', icon: 'Icon', layout: 'Layout', step: 'Step' }[schema.name] || schema.name.replaceAll('_', ' '));
-    form.addEventListener('value-changed', (event) => {
-      event.stopPropagation();
-      this._config = { ...this._config, ...(event.detail?.value || {}) };
-      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
-    });
+    if (!this._form) {
+      if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      const form = document.createElement('ha-form');
+      form.schema = configSchema;
+      form.computeLabel = (schema) => fieldLabel(cardStrings(this._hass?.locale?.language), schema.name);
+      form.addEventListener('value-changed', (event) => {
+        event.stopPropagation();
+        this._config = { ...this._config, ...(event.detail?.value || {}) };
+        this._formData = { ...this._config };
+        this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
+      });
+      this.shadowRoot.append(form);
+      this._form = form;
+    }
+    this._form.hass = this._hass;
+    // Only push a changed config back into the form; echoing our own edit would
+    // reset the form (and the caret) while the user is typing.
+    if (!sameCardConfig(this._formData, this._config)) {
+      this._form.data = { ...this._config };
+      this._formData = { ...this._config };
+    }
   }
 }
 
@@ -232,16 +399,17 @@ export class BubbleClimateCard extends HTMLElementBase {
     const layout = normalizeLayout(config.layout);
     if (!layout) throw new Error('Supported layouts are "bubble" and "compact" (legacy alias: "row").');
     if (config.step !== undefined && (numeric(config.step) === null || numeric(config.step) <= 0)) throw new Error('step must be a number greater than zero.');
+    this._stepOverride = config.step === undefined ? null : numeric(config.step);
     this.config = { layout: 'bubble', show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
       show_unavailable_badge: true, show_mode_buttons: true, show_step_controls: true, show_schedule_button: true, step: 0.5, ...config, layout };
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    this._render();
+    this._renderPreservingDeltaFocus();
   }
-  set hass(hass) { this._hass = hass; this._reconcileOptimistic(); this._render(); }
+  set hass(hass) { this._hass = hass; this._reconcileOptimistic(); this._renderPreservingDeltaFocus(); }
   disconnectedCallback() { clearTimeout(this._optimisticTimer); this._optimisticTimer = null; this._optimistic = null; }
   getCardSize() { return this.config?.layout === 'compact' ? 2 : 1; }
   _service(domain, service, data) { if (this._hass) this._hass.callService(domain, service, data); }
-  _statusDisplay(entity) {
+  _statusDisplay(entity, strings = STRINGS.en) {
     const key = climateStatusKey(entity);
     const hass = this._hass;
     try {
@@ -257,7 +425,7 @@ export class BubbleClimateCard extends HTMLElementBase {
         if (typeof formatted === 'string' && formatted.trim()) return formatted;
       }
     } catch {}
-    return statusLabel(key || entity?.state);
+    return statusLabel(key || entity?.state, strings);
   }
   _relativeDisplay(entity) {
     const timestamp = pickEntityTimestamp(entity);
@@ -282,12 +450,14 @@ export class BubbleClimateCard extends HTMLElementBase {
     const target = model.value;
     const title = c.name || a.friendly_name || c.entity;
     const hasTarget = !unavailable && model.available;
-    const step = effectiveStep(e, c.step);
+    const step = effectiveStep(e, c.step, this._stepOverride);
     const adjustable = hasTarget && model.controllable && step !== null && step > 0;
-    const statusText = unavailable ? 'Unavailable' : this._statusDisplay(e);
+    const locale = this._hass?.locale?.language;
+    const t = cardStrings(locale);
+    const statusText = unavailable ? '' : this._statusDisplay(e, t);
     const relativeText = unavailable ? '' : this._relativeDisplay(e);
     const humidityValue = numeric(a.current_humidity);
-    const locale = this._hass?.locale?.language;
+    const scheduleActive = isScheduleEnabled(this._scheduleProgram());
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
        ha-card{border:1px solid var(--divider-color);border-radius:var(--bubble-border-radius,18px);background:var(--ha-card-background,var(--card-background-color));padding:8px 10px;box-sizing:border-box;min-height:64px;display:block;overflow:hidden;cursor:pointer}ha-card:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
@@ -316,11 +486,13 @@ export class BubbleClimateCard extends HTMLElementBase {
       .controls .setpoint:hover{background:transparent}
       .controls .setpoint:focus-visible{outline-offset:0;border-radius:10px}
        .schedule{display:grid;place-items:center;flex:0 0 auto;padding:8px 11px;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;cursor:pointer}
-       .schedule:hover{background:var(--divider-color)}.schedule:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.schedule ha-icon{--mdc-icon-size:18px;display:block}
+       .schedule[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}
+       .schedule:hover:not([data-active="true"]){background:var(--divider-color)}.schedule[data-active="true"]:hover{background:var(--bubble-accent-color,var(--primary-color))}.schedule:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.schedule ha-icon{--mdc-icon-size:18px;display:block}
         @media(max-width:420px){ha-card{padding:7px 8px}.row{gap:7px}.icon{width:34px;height:34px;flex-basis:34px}.icon ha-icon{--mdc-icon-size:19px}.current{font-size:12px;padding:6px 8px}.controls button{padding:6px 7px;font-size:13px}.controls .setpoint{min-width:48px}.schedule{padding:6px 8px}}
      </style><ha-card tabindex="0" role="group" aria-label="Tap card background to toggle heating"><div class="row"><span class="icon"><ha-icon></ha-icon></span><div class="meta"><span class="title"></span><span class="status"></span></div><span class="current"><ha-icon></ha-icon><span></span></span><div class="controls"></div><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div></ha-card>`;
     const root = this.shadowRoot;
     this._bindCardToggle(root.querySelector('ha-card'));
+    root.querySelector('ha-card').setAttribute('aria-label', t.toggleHeating);
     const icon = root.querySelector('.icon');
     icon.dataset.active = active ? 'true' : 'false';
     root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
@@ -328,7 +500,7 @@ export class BubbleClimateCard extends HTMLElementBase {
     root.querySelector('.title').textContent = String(title);
     const statusEl = root.querySelector('.status');
     if (unavailable) {
-      if (c.show_unavailable_badge) statusEl.textContent = String(statusText);
+      if (c.show_unavailable_badge) statusEl.textContent = t.unavailable;
       else statusEl.hidden = true;
     } else {
       const parts = rowStatusParts({ statusText, humidityValue, relativeText, showStateChip: c.show_state_chip, showHumidityChip: c.show_humidity_chip, locale });
@@ -349,36 +521,39 @@ export class BubbleClimateCard extends HTMLElementBase {
       const currentDisplay = currentTemperatureDisplay(currentValue, unit, locale);
       currentText.textContent = currentDisplay;
       currentEl.setAttribute('role', 'img');
-      currentEl.setAttribute('aria-label', `Current temperature ${currentDisplay}`);
+      currentEl.setAttribute('aria-label', t.currentTemperature(currentDisplay));
     } else currentEl.hidden = true;
     const controls = root.querySelector('.controls');
     const schedule = root.querySelector('.schedule');
+    schedule.dataset.active = scheduleActive ? 'true' : 'false';
+    schedule.setAttribute('aria-label', t.openSchedule);
+    schedule.title = t.openSchedule;
     schedule.hidden = !c.show_schedule_button || unavailable;
     schedule.addEventListener('click', () => this._openSchedule());
     controls.setAttribute('role', 'group');
-    controls.setAttribute('aria-label', 'Temperature controls');
+    controls.setAttribute('aria-label', t.temperatureControls);
     controls.tabIndex = 0;
     if (unavailable) controls.hidden = true;
     else {
-      if (c.show_step_controls && adjustable) { const minus = document.createElement('button'); minus.dataset.delta = String(-step); minus.setAttribute('aria-label', 'Decrease target temperature'); minus.textContent = '−'; controls.append(minus); }
+      if (c.show_step_controls && adjustable) { const minus = document.createElement('button'); minus.dataset.delta = String(-step); minus.setAttribute('aria-label', t.decrease); minus.textContent = '−'; controls.append(minus); }
       const setpoint = document.createElement('button');
       setpoint.className = 'setpoint';
       if (hasTarget) {
         const targetDisplay = formatNumber(target, locale);
         const lowDisplay = formatNumber(model.low, locale);
         const highDisplay = formatNumber(model.high, locale);
-         const label = model.dual ? `${lowDisplay}–${highDisplay} ${unit}` : `${targetDisplay} ${unit}`;
-         const accessible = model.dual ? `Target temperature range ${lowDisplay} to ${highDisplay} ${unit}` : `Target ${targetDisplay} ${unit}`;
+        const label = model.dual ? `${lowDisplay}–${highDisplay} ${unit}` : `${targetDisplay} ${unit}`;
+        const accessible = model.dual ? t.targetRange(lowDisplay, highDisplay, unit) : t.target(targetDisplay, unit);
         setpoint.textContent = label;
         setpoint.title = accessible;
-        setpoint.setAttribute('aria-label', `${accessible}. Open details`);
+        setpoint.setAttribute('aria-label', t.openDetails(accessible));
       } else {
         setpoint.textContent = '—';
-        setpoint.setAttribute('aria-label', 'Target unavailable');
+        setpoint.setAttribute('aria-label', t.targetUnavailable);
         setpoint.disabled = true;
       }
       controls.append(setpoint);
-      if (c.show_step_controls && adjustable) { const plus = document.createElement('button'); plus.dataset.delta = String(step); plus.setAttribute('aria-label', 'Increase target temperature'); plus.textContent = '+'; controls.append(plus); }
+      if (c.show_step_controls && adjustable) { const plus = document.createElement('button'); plus.dataset.delta = String(step); plus.setAttribute('aria-label', t.increase); plus.textContent = '+'; controls.append(plus); }
       if (!controls.children.length) controls.hidden = true;
       setpoint.addEventListener('click', () => {
         if (setpoint.disabled) return;
@@ -398,7 +573,9 @@ export class BubbleClimateCard extends HTMLElementBase {
     const title = c.name || a.friendly_name || c.entity;
     const modeList = modes(e).filter((m) => valid(m));
     const hasTarget = !unavailable && model.available;
-    const step = effectiveStep(e, c.step);
+    const step = effectiveStep(e, c.step, this._stepOverride);
+    const t = cardStrings(this._hass?.locale?.language);
+    const scheduleActive = isScheduleEnabled(this._scheduleProgram());
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,inherit)}
       ha-card{border-radius:var(--bubble-border-radius,20px);background:var(--ha-card-background,var(--card-background-color));padding:8px 12px;box-sizing:border-box;min-height:88px;display:grid;grid-template-rows:36px 36px;gap:4px;overflow:hidden;cursor:pointer}ha-card:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
@@ -409,57 +586,64 @@ export class BubbleClimateCard extends HTMLElementBase {
       .target{font-size:20px;color:var(--primary-text-color);font-weight:600;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.target strong{font:inherit}
       input[type=range]{width:auto;flex:1 0 45px;min-width:45px;accent-color:var(--primary-color);margin:0}
       .body button{padding:5px 6px;min-width:28px;flex:0 0 auto}.body select{width:clamp(54px,22vw,104px);max-width:104px;min-width:54px;flex:0 0 clamp(54px,22vw,104px);overflow:hidden;text-overflow:ellipsis;font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 5px}
-      button{font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 11px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.selected{background:var(--primary-color);color:var(--text-primary-color,#fff)}
+      button{font:inherit;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:7px 11px;cursor:pointer}.head .schedule[data-active="true"]{background:var(--bubble-accent-color,var(--primary-color));color:var(--text-primary-color,#fff)}button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.selected{background:var(--primary-color);color:var(--text-primary-color,#fff)}
       select:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.badge{color:var(--error-color);font-size:11px;white-space:nowrap}.empty{color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis}
       @media(max-width:420px){ha-card{padding:7px 9px}.head,.body{gap:4px}.target{font-size:16px}.body button{padding:4px 5px;min-width:24px}.chip{max-width:62px}}
     </style><ha-card tabindex="0" role="group" aria-label="Tap card background to toggle heating"><div class="head"><span class="icon"><ha-icon></ha-icon></span><span class="title"></span><span class="chips"></span><button class="schedule" aria-label="Open schedule details" title="Open schedule details"><ha-icon icon="mdi:calendar-clock"></ha-icon></button></div>
        <div class="body"></div></ha-card>`;
     const root = this.shadowRoot;
     this._bindCardToggle(root.querySelector('ha-card'));
+    root.querySelector('ha-card').setAttribute('aria-label', t.toggleHeating);
     root.querySelector('.icon ha-icon').setAttribute('icon', String(c.icon || a.icon || 'mdi:thermostat'));
     root.querySelector('.title').textContent = String(title);
     const chips = root.querySelector('.chips');
     const addChip = (show, text) => { if (show && text) { const span = document.createElement('span'); span.className = 'chip'; span.textContent = String(text); chips.append(span); } };
-    addChip(c.show_state_chip && !unavailable, modeLabel(e?.state));
+    addChip(c.show_state_chip && !unavailable, modeLabel(e?.state, t));
     addChip(c.show_current_temperature_chip && !unavailable, currentValue !== null ? `${currentValue}${unit}` : '');
     addChip(c.show_humidity_chip && !unavailable, numeric(a.current_humidity) !== null ? `${numeric(a.current_humidity)}%` : '');
-    if (c.show_unavailable_badge && unavailable) { const b=document.createElement('span'); b.className='badge'; b.textContent='Unavailable'; chips.append(b); }
+    if (c.show_unavailable_badge && unavailable) { const b=document.createElement('span'); b.className='badge'; b.textContent=t.unavailable; chips.append(b); }
     const schedule = root.querySelector('.schedule');
+    schedule.setAttribute('aria-label', t.openSchedule);
+    schedule.title = t.openSchedule;
+    schedule.dataset.active = scheduleActive ? 'true' : 'false';
     schedule.hidden = !c.show_schedule_button;
     const body = root.querySelector('.body');
-    if (unavailable) { const message=document.createElement('span'); message.className='empty'; message.textContent='Entity unavailable'; body.append(message); }
+    if (unavailable) { const message=document.createElement('span'); message.className='empty'; message.textContent=t.entityUnavailable; body.append(message); }
     else {
-      const targetText=document.createElement('span'); targetText.className='target'; targetText.textContent=hasTarget ? '' : 'Target unavailable';
+      const targetText=document.createElement('span'); targetText.className='target'; targetText.textContent=hasTarget ? '' : t.targetUnavailable;
       if (hasTarget) {
-        targetText.title = model.dual ? `Target temperature range ${model.low} to ${model.high}${unit}` : `Target ${target}${unit}`;
+        targetText.title = model.dual ? t.targetRange(model.low, model.high, unit) : t.target(target, unit);
         const value=document.createElement('strong');
         if (model.dual) {
           value.textContent=`${model.low}–${model.high}${unit}`;
-          targetText.setAttribute('aria-label', `Target temperature range ${model.low} to ${model.high}${unit}`);
+          targetText.setAttribute('aria-label', t.targetRange(model.low, model.high, unit));
         } else {
           value.textContent=`${target}${unit}`;
-          targetText.setAttribute('aria-label', `Target ${target}${unit}`);
+          targetText.setAttribute('aria-label', t.target(target, unit));
         }
         targetText.append(value);
       }
       body.append(targetText);
       if (hasTarget && model.controllable && step !== null && step > 0) {
-         if (c.show_step_controls) for (const [d,label,text] of [[-step,'Decrease target temperature','−'],[step,'Increase target temperature','+']]) { const button=document.createElement('button'); button.dataset.delta=String(d); button.setAttribute('aria-label',label); button.textContent=text; body.append(button); }
-         const slider=document.createElement('input'); slider.className='slider'; slider.type='range'; slider.setAttribute('aria-label',model.dual?'Target temperature range midpoint':'Target temperature');
+         if (c.show_step_controls) for (const [d,label,text] of [[-step,t.decrease,'−'],[step,t.increase,'+']]) { const button=document.createElement('button'); button.dataset.delta=String(d); button.setAttribute('aria-label',label); button.textContent=text; body.append(button); }
+         const slider=document.createElement('input'); slider.className='slider'; slider.type='range'; slider.setAttribute('aria-label',model.dual?t.midpoint:t.targetLabel);
          slider.min=String(model.sliderMin); slider.max=String(model.sliderMax); slider.step=String(step); slider.value=String(target); body.append(slider);
       }
-      if (c.show_mode_buttons && modeList.length) { const select=document.createElement('select'); select.setAttribute('aria-label','HVAC mode'); for(const m of modeList){const option=document.createElement('option');option.value=String(m);option.textContent=modeLabel(m);select.append(option)} select.value=modeList.includes(e.state)?e.state:modeList[0]; body.append(select); }
+      if (c.show_mode_buttons && modeList.length) { const select=document.createElement('select'); select.className='hvac-mode'; select.setAttribute('aria-label',t.hvacMode); for(const m of modeList){const option=document.createElement('option');option.value=String(m);option.textContent=modeLabel(m,t);select.append(option)} select.value=modeList.includes(e.state)?e.state:modeList[0]; body.append(select); }
     }
     this.shadowRoot.querySelector('.slider')?.addEventListener('change', (ev) => this._setTemperature(ev.target.value, e));
     root.querySelectorAll('[data-delta]').forEach((b) => b.addEventListener('click', () => this._setTemperature(target + Number(b.dataset.delta), e)));
-    root.querySelector('select[aria-label="HVAC mode"]')?.addEventListener('change', (ev) => { if (!unavailable && modes(e).includes(ev.target.value)) this._service('climate', 'set_hvac_mode', { entity_id: c.entity, hvac_mode: ev.target.value }); });
+    root.querySelector('select.hvac-mode')?.addEventListener('change', (ev) => { if (!unavailable && modes(e).includes(ev.target.value)) this._service('climate', 'set_hvac_mode', { entity_id: c.entity, hvac_mode: ev.target.value }); });
     schedule.addEventListener('click', () => this._openSchedule());
   }
   _scheduleSensor() {
     return Object.values(this._hass?.states || {}).find((state) => state?.attributes?.scheduler_domain === 'bubble_climate_scheduler') || null;
   }
+  _scheduleProgram() {
+    return this._scheduleSensor()?.attributes?.programs?.[this.config.entity] || null;
+  }
   _openSchedule() {
-    const program = this._scheduleSensor()?.attributes?.programs?.[this.config.entity];
+    const program = this._scheduleProgram();
     this._scheduleOpen = true; this._scheduleDraft = scheduleDraft(program); this._scheduleError = ''; this._renderScheduleDialog();
   }
   _closeSchedule(dialog) {
@@ -506,6 +690,11 @@ export class BubbleClimateCard extends HTMLElementBase {
       .field label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--secondary-text-color)}
       .field input{font:inherit;font-size:14px;color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:10px;padding:7px 10px}
       .field input:focus-visible{outline:2px solid var(--primary-color);outline-offset:1px;border-color:transparent}
+      .field select{font:inherit;font-size:14px;color:var(--primary-text-color);background:var(--card-background-color,var(--ha-card-background));border:1px solid var(--divider-color);border-radius:10px;padding:7px 10px}
+      .field select:focus-visible{outline:2px solid var(--primary-color);outline-offset:1px;border-color:transparent}
+      .field.mode{margin:0 0 14px}
+      .field.outside{margin:0 0 14px}
+      .field.outside label{color:var(--primary-text-color);font-weight:600}
       .dlg-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
       .btn{font:inherit;font-size:14px;font-weight:600;color:var(--primary-text-color);background:var(--secondary-background-color);border:0;border-radius:999px;padding:9px 16px;cursor:pointer;white-space:nowrap}
       .btn:hover{background:var(--divider-color)}
@@ -517,38 +706,55 @@ export class BubbleClimateCard extends HTMLElementBase {
     </style>`;
   }
   _renderScheduleDialog() {
+    const t = cardStrings(this._hass?.locale?.language);
     const old = this.shadowRoot.querySelector('dialog'); old?.remove();
-    const dialog = document.createElement('dialog'); dialog.setAttribute('aria-label', 'Weekly climate schedule');
-    dialog.innerHTML = `${this._scheduleDialogStyle()}<div class="dlg-head"><span class="dlg-icon"><ha-icon icon="mdi:calendar-clock"></ha-icon></span><div class="dlg-titles"><h2>Weekly schedule</h2><div class="dlg-sub"></div></div><button class="close" aria-label="Close schedule editor" title="Close"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dlg-body"></div>`;
+    const dialog = document.createElement('dialog'); dialog.setAttribute('aria-label', t.scheduleAria);
+    dialog.innerHTML = `${this._scheduleDialogStyle()}<div class="dlg-head"><span class="dlg-icon"><ha-icon icon="mdi:calendar-clock"></ha-icon></span><div class="dlg-titles"><h2>${t.weeklySchedule}</h2><div class="dlg-sub"></div></div><button class="close" aria-label="${t.closeSchedule}" title="${t.close}"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dlg-body"></div>`;
     const body = dialog.querySelector('.dlg-body');
     dialog.querySelector('.close').addEventListener('click', () => this._closeSchedule(dialog));
     dialog.querySelector('.dlg-sub').textContent = this.config.name || this.config.entity;
     const sensor = this._scheduleSensor(), program = sensor?.attributes?.programs?.[this.config.entity];
+    const entity = this._hass?.states?.[this.config.entity];
     if (!sensor) {
-      const p = document.createElement('p'); p.className = 'error'; p.textContent = 'Scheduler backend is not installed. Install and configure bubble_climate_scheduler to edit a program.'; body.append(p);
-      if (typeof this.config.schedule_entity === 'string' && /^schedule\.[\w-]+$/.test(this.config.schedule_entity)) { const link = document.createElement('button'); link.className = 'btn'; link.textContent = 'Open legacy schedule'; link.addEventListener('click', () => this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: this.config.schedule_entity }, bubbles: true, composed: true }))); body.append(link); }
+      const p = document.createElement('p'); p.className = 'error'; p.textContent = t.backendMissing; body.append(p);
+      if (typeof this.config.schedule_entity === 'string' && /^schedule\.[\w-]+$/.test(this.config.schedule_entity)) { const link = document.createElement('button'); link.className = 'btn'; link.textContent = t.openLegacy; link.addEventListener('click', () => this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: this.config.schedule_entity }, bubbles: true, composed: true }))); body.append(link); }
     } else {
       const statusline = document.createElement('div'); statusline.className = 'statusline';
-      const stLabel = document.createElement('span'); stLabel.textContent = 'Next change: ';
-      const stValue = document.createElement('span'); stValue.className = 'chip'; stValue.textContent = program?.next_change || 'none';
+      const stLabel = document.createElement('span'); stLabel.textContent = t.nextChange;
+      const stValue = document.createElement('span'); stValue.className = 'chip'; stValue.textContent = program?.next_change || t.none;
       statusline.append(stLabel, stValue);
-      if (program?.active_slot_id) { const act = document.createElement('span'); act.textContent = ` · Active: ${program.active_slot_id}`; statusline.append(act); }
+      if (program?.active_slot_id) { const act = document.createElement('span'); act.textContent = t.active(program.active_slot_id); statusline.append(act); }
       body.append(statusline);
       if (program?.last_error) { const p = document.createElement('p'); p.className = 'error'; p.textContent = String(program.last_error); body.append(p); }
-      const enabledLabel = document.createElement('label'), enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(this._scheduleDraft.enabled); enabledLabel.className = 'switch'; enabledLabel.append(enabled, document.createTextNode('Enabled')); enabled.addEventListener('change', () => this._scheduleDraft.enabled = enabled.checked); body.append(enabledLabel);
+      const enabledLabel = document.createElement('label'), enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(this._scheduleDraft.enabled); enabledLabel.className = 'switch'; enabledLabel.append(enabled, document.createTextNode(t.enabled)); enabled.addEventListener('change', () => this._scheduleDraft.enabled = enabled.checked);      body.append(enabledLabel);
+      const modeField = document.createElement('div'); modeField.className = 'field mode';
+      const modeFieldLabel = document.createElement('label'); modeFieldLabel.textContent = t.hvacMode;
+      const modeSelect = document.createElement('select'); modeSelect.setAttribute('aria-label', t.hvacMode);
+      const modeNone = document.createElement('option'); modeNone.value = ''; modeNone.textContent = t.dontChange; modeSelect.append(modeNone);
+      for (const m of schedulableModes(entity)) { const option = document.createElement('option'); option.value = m; option.textContent = modeLabel(m, t); modeSelect.append(option); }
+      modeSelect.value = this._scheduleDraft.hvacMode ?? '';
+      modeSelect.addEventListener('change', () => { this._scheduleDraft.hvacMode = modeSelect.value || null; });
+      modeFieldLabel.append(modeSelect); modeField.append(modeFieldLabel); body.append(modeField);
+      const awayField = document.createElement('div'); awayField.className = 'field outside';
+      const awayLabel = document.createElement('label'); awayLabel.textContent = t.outsideSchedule;
+      const awayInput = document.createElement('input'); awayInput.type = 'number'; awayInput.step = 'any'; awayInput.value = this._scheduleDraft.awayTemperature ?? ''; awayInput.setAttribute('aria-label', t.outsideScheduleAria); awayInput.title = t.outsideScheduleTitle;
+      awayInput.addEventListener('input', () => this._scheduleDraft.awayTemperature = awayInput.value);
+      awayLabel.append(awayInput); awayField.append(awayLabel); body.append(awayField);
       const slots = document.createElement('div');
       const renderSlots = () => { slots.replaceChildren(); this._scheduleDraft.slots.forEach((slot, index) => {
         const box = document.createElement('section'); box.className = 'slot';
         const slotHead = document.createElement('div'); slotHead.className = 'slot-head';
-        const title = document.createElement('h3'); title.textContent = `Slot ${index + 1}`;
-        const remove = document.createElement('button'); remove.className = 'remove'; remove.textContent = 'Remove'; remove.setAttribute('aria-label', `Remove slot ${index + 1}`); remove.addEventListener('click', () => { this._scheduleDraft.slots.splice(index, 1); renderSlots(); });
+        const title = document.createElement('h3'); title.textContent = t.slot(index + 1);
+        const remove = document.createElement('button'); remove.className = 'remove'; remove.textContent = t.remove; remove.setAttribute('aria-label', t.removeSlot(index + 1)); remove.addEventListener('click', () => { this._scheduleDraft.slots.splice(index, 1); renderSlots(); });
         slotHead.append(title, remove); box.append(slotHead);
-        const days = document.createElement('div'); days.className = 'days'; ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((day, i) => {
-          const label = document.createElement('label'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = slot.days.includes(i + 1); cb.setAttribute('aria-label', day); cb.addEventListener('change', () => { slot.days = cb.checked ? [...new Set([...slot.days, i + 1])] : slot.days.filter((x) => x !== i + 1); });
-          const pill = document.createElement('span'); pill.className = 'day'; pill.textContent = day[0]; label.append(cb, pill); days.append(label);
+        const days = document.createElement('div'); days.className = 'days'; t.dayNames.forEach((name, i) => {
+          // Pill text comes from the day index (unique two-letter label); the
+          // checkbox keeps the full accessible name and its ISO weekday i + 1.
+          const label = document.createElement('label'), cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = slot.days.includes(i + 1); cb.setAttribute('aria-label', name); cb.addEventListener('change', () => { slot.days = cb.checked ? [...new Set([...slot.days, i + 1])] : slot.days.filter((x) => x !== i + 1); });
+          const pill = document.createElement('span'); pill.className = 'day'; pill.textContent = t.dayPills[i]; label.append(cb, pill); days.append(label);
         }); box.append(days);
         const field = document.createElement('div'); field.className = 'field';
-        for (const [key, labelText, type] of [['start', 'Start', 'time'], ['end', 'End', 'time'], ['temperature', 'Target', 'number']]) {
+        for (const [key, labelText, type] of [['start', t.start, 'time'], ['end', t.end, 'time'], ['temperature', t.targetField, 'number']]) {
           const label = document.createElement('label'); label.textContent = labelText;
           const input = document.createElement('input'); input.type = type; input.value = String(slot[key]); if (key === 'temperature') input.step = 'any'; input.setAttribute('aria-label', labelText); input.addEventListener('input', () => slot[key] = input.value);
           label.append(input); field.append(label);
@@ -556,11 +762,11 @@ export class BubbleClimateCard extends HTMLElementBase {
         box.append(field); slots.append(box);
       })}; renderSlots(); body.append(slots);
       const error = document.createElement('p'); error.className = 'error'; error.textContent = this._scheduleError || '';
-      const add = document.createElement('button'); add.className = 'btn ghost'; add.textContent = '+ Add slot'; add.addEventListener('click', () => { this._scheduleDraft.slots.push({ id: globalThis.crypto?.randomUUID?.() || `slot-${Date.now()}-${Math.random().toString(36).slice(2)}`, days: [1], start: '08:00', end: '09:00', temperature: 20 }); renderSlots(); });
+      const add = document.createElement('button'); add.className = 'btn ghost'; add.textContent = t.addSlot; add.addEventListener('click', () => { this._scheduleDraft.slots.push({ id: globalThis.crypto?.randomUUID?.() || `slot-${Date.now()}-${Math.random().toString(36).slice(2)}`, days: [1], start: '08:00', end: '09:00', temperature: 20 }); renderSlots(); });
       body.append(add); body.append(error);
       const actions = document.createElement('div'); actions.className = 'dlg-actions';
-      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = 'Delete program'; del.addEventListener('click', async () => { try { await this._hass.callService('bubble_climate_scheduler', 'delete_program', { climate_entity: this.config.entity }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(del);
-      const save = document.createElement('button'); save.className = 'btn primary'; save.textContent = 'Save program'; save.addEventListener('click', async () => { const issue = validateScheduleDraft(this._scheduleDraft); if (issue) { error.textContent = issue; return; } try { await this._hass.callService('bubble_climate_scheduler', 'save_program', { climate_entity: this.config.entity, enabled: this._scheduleDraft.enabled, slots: this._scheduleDraft.slots.map((s) => ({ id: s.id, days: [...s.days].sort((a, b) => a - b), start: s.start, end: s.end, temperature: Number(s.temperature) })) }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(save);
+      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = t.deleteProgram; del.addEventListener('click', async () => { try { await this._hass.callService('bubble_climate_scheduler', 'delete_program', { climate_entity: this.config.entity }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(del);
+      const save = document.createElement('button'); save.className = 'btn primary'; save.textContent = t.saveProgram; save.addEventListener('click', async () => { const issue = validateScheduleDraft(this._scheduleDraft, t); if (issue) { error.textContent = issue; return; } try { await this._hass.callService('bubble_climate_scheduler', 'save_program', { climate_entity: this.config.entity, enabled: this._scheduleDraft.enabled, slots: this._scheduleDraft.slots.map((s) => ({ id: s.id, days: [...s.days].sort((a, b) => a - b), start: s.start, end: s.end, temperature: Number(s.temperature) })), away_temperature: awayTemperaturePayload(this._scheduleDraft.awayTemperature), hvac_mode: this._scheduleDraft.hvacMode || null }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(save);
       body.append(actions);
     }
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); this._closeSchedule(dialog); }); this.shadowRoot.append(dialog);
@@ -579,10 +785,47 @@ export class BubbleClimateCard extends HTMLElementBase {
     card.addEventListener('click', ev=>{ const path=ev.composedPath?.() || [ev.target]; if(path.some(node=>node!==card && node?.matches?.('button,input,select,textarea,a,[role="slider"],[role="button"],[role="group"]'))) return; const e=this._hass?.states?.[this.config.entity], mode=hvacToggleMode(e); if(mode) this._service('climate','set_hvac_mode',{entity_id:this.config.entity,hvac_mode:mode}); });
     card.addEventListener('keydown', ev=>{ if((ev.key==='Enter'||ev.key===' ') && ev.target===card){ev.preventDefault();card.click();} });
   }
+  _focusedDelta() {
+    // Which +/- control owns focus right now. The optimistic re-render replaces
+    // the whole shadow tree, which silently drops focus otherwise.
+    try {
+      const delta = this.shadowRoot?.activeElement?.dataset?.delta;
+      return delta === undefined || delta === null || delta === '' ? null : String(delta);
+    } catch { return null; }
+  }
+  _restoreDeltaFocus(delta) {
+    // Give focus back to the same +/- control after the re-render; a slider or
+    // anything else (no data-delta) keeps its own focus handling. Focus the
+    // user already moved away is never pulled back: nothing to do without a
+    // captured delta, and nothing to steal when a live control still owns it.
+    if (delta === null || delta === undefined) return;
+    try {
+      const root = this.shadowRoot;
+      if (!root?.querySelector) return;
+      const active = root.activeElement;
+      // A live control still holds focus (the render was a no-op, e.g. the
+      // schedule dialog is open): leave it exactly where the user put it.
+      if (active && active !== root && active.isConnected) return;
+      // Focus already sits on another element outside the card: not ours.
+      const doc = typeof document === 'undefined' ? null : document;
+      const docActive = doc?.activeElement;
+      if (docActive && docActive !== doc.body && docActive !== (root.host || this)) return;
+      root.querySelector(`[data-delta="${delta}"]`)?.focus?.();
+    } catch {}
+  }
+  _renderPreservingDeltaFocus() {
+    // Wrapper around _render() for every path that rebuilds the whole card
+    // (config/hass updates, the optimistic update, its 8s timeout and service
+    // rollback): capture the focused +/- before the swap, rebuild, and give
+    // focus back only if the rebuild dropped it.
+    const delta = this._focusedDelta();
+    this._render();
+    this._restoreDeltaFocus(delta);
+  }
   _setTemperature(value, entity) {
     const base=this._displayEntity(this._hass?.states?.[this.config.entity] || entity);
-    const payload = temperaturePayload(base, value, this.config.step);
-    if (payload) { clearTimeout(this._optimisticTimer); this._optimistic={entityId:this.config.entity,payload}; this._render(); this._optimisticTimer=setTimeout(()=>{this._optimistic=null;this._optimisticTimer=null;this._render();},8000); const seq=this._optimistic; Promise.resolve().then(()=>this._hass?.callService('climate','set_temperature',{entity_id:this.config.entity,...payload})).catch(()=>{if(this._optimistic===seq){clearTimeout(this._optimisticTimer);this._optimistic=null;this._render();}}); }
+    const payload = temperaturePayload(base, value, this.config.step, this._stepOverride);
+    if (payload) { clearTimeout(this._optimisticTimer); this._optimistic={entityId:this.config.entity,payload}; this._renderPreservingDeltaFocus(); this._optimisticTimer=setTimeout(()=>{this._optimistic=null;this._optimisticTimer=null;this._renderPreservingDeltaFocus();},8000); const seq=this._optimistic; Promise.resolve().then(()=>this._hass?.callService('climate','set_temperature',{entity_id:this.config.entity,...payload})).catch(()=>{if(this._optimistic===seq){clearTimeout(this._optimisticTimer);this._optimistic=null;this._renderPreservingDeltaFocus();}}); }
   }
 }
 

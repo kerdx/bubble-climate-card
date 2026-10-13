@@ -2,7 +2,7 @@
 
 # Bubble Climate Card
 
-### A polished climate control card with a persistent weekly schedule for Home Assistant.
+### A climate card with Bubble-inspired pill styling and a persistent weekly schedule for Home Assistant.
 
 [![Release](https://img.shields.io/github/v/release/kerdx/bubble-climate-card?label=release)](https://github.com/kerdx/bubble-climate-card/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -13,132 +13,124 @@
 
 ---
 
-**Bubble Climate Card** (`custom:bubble-climate-card`) is a standalone Lovelace climate card with Bubble-inspired pill styling and an optional weekly temperature scheduler. Scheduling runs in the Home Assistant integration backend: your programs keep running when the dashboard is closed — and after Home Assistant restarts.
+**Bubble Climate Card** (`custom:bubble-climate-card`) is a standalone Lovelace climate card with an optional weekly temperature scheduler. Programs run in the integration backend, so they keep working with the dashboard closed and after a Home Assistant restart.
 
-> This is an independent project. It is not part of Bubble Card and does not depend on Bubble Card or Nodalia.
-
-## Why you'll like it
-
-| | |
-| --- | --- |
-| 🎨 **Bubble styling** | Rounded pill controls in a horizontal entity row that inherits your theme's colors — no dark-only palette, no hardcoded styles. |
-| 📅 **Real weekly scheduling** | Build multi-slot programs per climate entity from the calendar button; the backend executes them independently of any open dashboard. |
-| 🕒 **Timezone & DST aware** | Slots follow Home Assistant's timezone, intervals are computed as `[start, end)`, and daylight-saving transitions that change the active slot are handled. |
-| ♿ **Accessible** | Labeled controls, visible focus rings, decorative icons hidden from assistive technology, and localized numbers and relative times. |
-| 🧩 **Zero-setup frontend** | The integration registers the card's JavaScript automatically: no manual Lovelace resource, no YAML required, no `schedule.*` helper or webhook. |
+> Independent project: it is not part of Bubble Card and does not depend on Bubble Card or Nodalia.
 
 ## Features
 
-- Climate controls that follow the entity's available HVAC capabilities.
-- A horizontal `bubble` layout by default, with the previous two-row layout still available as `compact`.
-- Weekly schedule editor opened from the calendar button.
-- Backend persistence and execution, independent of an open dashboard.
-- Visual card editor with a climate entity selector and entity suggestions.
-- One temperature target per scheduled interval, with Home Assistant timezone support.
-- A diagnostic schedule sensor and integration actions for managing programs.
-- Localized rendering: row numbers use `Intl.NumberFormat` and relative times use `Intl.RelativeTimeFormat` with `hass.locale.language` (for example `20,5 °C` and `43 secondi fa` in Italian), falling back to English labels when `Intl` is unavailable.
+- **Pill layout** — horizontal `bubble` layout by default (`row` remains a supported alias), with the previous two-row card available as `layout: compact`. Colors come from your theme.
+- **Weekly schedule** — multi-slot programs per climate entity, edited from the calendar button and executed by the backend, with an optional HVAC mode per program (heating or cooling).
+- **Outside-schedule temperature** — optional target applied outside the configured slots.
+- **Timezone & DST aware** — `[start, end)` intervals in Home Assistant's timezone.
+- **Zero-setup frontend** — the integration serves and registers the card's JavaScript; no Lovelace resource, YAML, `schedule.*` helper or webhook.
+- **English & Italian UI** — the card and its schedule editor follow Home Assistant's language (English fallback), with localized relative times and localized numbers in the `bubble` (`row` alias) layout (the `compact` layout renders raw values), labeled controls and visible focus rings.
 
 ## Installation
 
-The repository is distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
-
-**Version note:** the current release is [`v0.1.9`](https://github.com/kerdx/bubble-climate-card/releases/tag/v0.1.9); see [`CHANGELOG.md`](CHANGELOG.md) for its release notes. HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
+Distributed as a HACS **custom repository**; it is not currently listed in the default HACS catalog.
 
 ### HACS
 
-1. In HACS, open **⋮ → Custom repositories** and add [`https://github.com/kerdx/bubble-climate-card`](https://github.com/kerdx/bubble-climate-card) with category **Integration**.
+1. **⋮ → Custom repositories** → add `https://github.com/kerdx/bubble-climate-card` with category **Integration**.
 2. Install **Bubble Climate Scheduler** and restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration** and add **Bubble Climate Scheduler**.
-4. Refresh or reopen the dashboard, then choose **Edit dashboard → Add card**. Search for and select **Bubble Climate Card**, choose a climate entity in the visual editor, and save.
+3. **Settings → Devices & services → Add integration** → **Bubble Climate Scheduler**.
+4. Refresh the dashboard, then **Edit dashboard → Add card → Bubble Climate Card** and pick a climate entity.
 
-The integration loads and registers the card's JavaScript module through Home Assistant's extra module URL. After integration setup, refresh the dashboard and choose **Edit dashboard → Add card → Bubble Climate Card**. Select the card and a climate entity in the visual editor, then save. Entity suggestions are available only on Home Assistant 2026.6 and later. The integration does not add a card to any dashboard automatically: you choose where to add it. No manual Lovelace resource or YAML configuration is required.
+HACS installs the latest release by default; to try `main`, use **Re-download → Need a different version? → main**.
 
-### Manual installation
+### Manual
 
 1. Copy `custom_components/bubble_climate_scheduler` into `config/custom_components/`.
-2. Restart Home Assistant, then add **Bubble Climate Scheduler** from **Settings → Devices & services → Add integration**.
-3. Refresh or reopen the dashboard and add **Bubble Climate Card** from **Edit dashboard → Add card**. Select a climate entity in its visual editor.
+2. Restart Home Assistant and add **Bubble Climate Scheduler** from **Settings → Devices & services → Add integration**.
+3. Refresh the dashboard and add **Bubble Climate Card** from **Edit dashboard → Add card**.
 
-### YAML alternative
+The integration registers the card's JavaScript automatically: no manual resource, `schedule.*` helper or webhook is required. Entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later.
 
-For users who prefer YAML, the following optional configuration is an alternative to the visual editor:
+### YAML
 
 ```yaml
 type: custom:bubble-climate-card
 entity: climate.living_room
 name: Living Room
-icon: mdi:thermostat
 layout: bubble
-show_state_chip: false
-show_current_temperature_chip: true
-show_humidity_chip: false
-show_unavailable_badge: false
-show_step_controls: true
-show_schedule_button: true
 step: 0.5
 ```
 
-`layout: compact` keeps the previous two-row card with the HVAC mode dropdown and temperature slider. Legacy `layout: row` remains supported as an alias for `bubble`.
-
-Migration note: in v0.1.3 the visual editor's config stub saved `layout: compact`, so cards created then may contain that key and keep the previous appearance (not every saved card is necessarily affected). To get the new horizontal bubble look in such configs, set `layout: bubble` (or legacy `layout: row`) or remove the `layout` key; new cards and assets without an explicit layout use `bubble`. The `compact` choice remains available.
-
-The integration serves and registers the bundled frontend JavaScript. No manual resource, `schedule.*` helper, or webhook is required.
+`layout: row` remains supported as an alias for `bubble`. Cards saved by the v0.1.3 editor may contain `layout: compact`; set `layout: bubble` (or remove the key) for the horizontal layout.
 
 ## Card options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `entity` | — | Climate entity to control. Required. |
-| `name` | Entity name | Optional card title. |
-| `icon` | Entity icon | Optional icon override. |
-| `layout` | `bubble` | Card layout: `bubble` (default horizontal layout; legacy `row` is an alias) or `compact` (previous two-row layout). Unknown values are rejected. |
-| `show_state_chip` | `true` | Show the HVAC state and relative time in the row status line. Humidity is governed separately by `show_humidity_chip`. |
-| `show_current_temperature_chip` | `true` | Show the measured temperature chip. |
-| `show_humidity_chip` | `false` | Show the humidity in the row status line when available, even when `show_state_chip` is `false`. |
-| `show_unavailable_badge` | `true` | Show an unavailable indicator when the entity is unavailable. |
-| `show_mode_buttons` | `true` | Show an HVAC mode dropdown for modes exposed by the entity (`compact` layout only; in `bubble` there is no inline mode menu and modes are changed from the entity details opened by the setpoint). |
-| `show_step_controls` | `true` | Show controls to decrease or increase the target temperature. |
-| `show_schedule_button` | `true` | Show the standalone calendar pill that opens the weekly schedule editor; set to `false` to hide it. |
-| `step` | `0.5` | Fallback temperature increment used only when the climate entity's `target_temp_step` is missing, `unknown`, `unavailable`, or null. A declared invalid step (zero, negative, or non-numeric) disables target controls rather than substituting an unsupported increment. A valid entity step always takes precedence; for example, an entity step of `1` is not treated as `0.5`. |
+| `entity` | — | Climate entity. Required. |
+| `name` | Entity name | Card title. |
+| `icon` | Entity icon | Icon override. |
+| `layout` | `bubble` | `bubble` (horizontal entity row; legacy `row` is an alias) or `compact` (previous two-row card). Unknown values are rejected. |
+| `show_state_chip` | `true` | HVAC state and relative time in the row status line. |
+| `show_current_temperature_chip` | `true` | Measured-temperature chip. |
+| `show_humidity_chip` | `false` | Humidity in the status line when available (independent of `show_state_chip`). |
+| `show_unavailable_badge` | `true` | Unavailable indicator. |
+| `show_mode_buttons` | `true` | HVAC mode dropdown (`compact` only; in `bubble`, change modes from the entity details opened by the setpoint). |
+| `show_step_controls` | `true` | Decrease / increase target controls. |
+| `show_schedule_button` | `true` | Standalone calendar pill that opens the weekly editor; set to `false` to hide it. Existing cards that explicitly saved `false` continue to hide it. |
+| `step` | `0.5` fallback | Temperature increment. An explicitly configured `step` wins over the entity's `target_temp_step` (use `0.5` on an entity that declares `1`); otherwise the entity step is used, with `0.5` as fallback if missing. New card presets omit `step`. Existing configs that saved a preset `step: 0.5` now explicitly override the entity; remove `step` to follow `target_temp_step`. Without an override, an invalid declared entity step disables target controls. |
 
-## Layout anatomy
+## Layouts
 
-The default `bubble` layout shows a compact horizontal entity row: a circular climate icon on the left (accented while the state is anything other than `off`/`unavailable`/`unknown`, neutral otherwise), the entity name with status and relative time beneath it, the current-temperature chip when enabled, and a single grouped control pill — decrease, target setpoint, increase. The calendar is a separate, standalone pill (not part of the temperature group) and is visible by default; set `show_schedule_button: false` to hide it.
+- **`bubble`** (default; `row` is an alias): circular status icon, name and status line, current-temperature chip, and a grouped pill for decrease, setpoint, and increase. The calendar is a separate pill, accent-colored while its schedule program is enabled.
+- **`compact`**: the previous two-row card (identity, chips and calendar, then target, slider and HVAC mode dropdown).
 
-Tap an unused area of the card to toggle heating between `heat` and `off` only when both modes are supported. You can also focus the card and press Enter or Space. Interactive child controls (including temperature controls, the schedule button, and compact-layout inputs) do not trigger the card toggle. The target display updates immediately after using the +/- controls in the `bubble` and `compact` layouts; if the service fails or Home Assistant does not confirm the requested target within a short timeout, the display reverts to the Home Assistant value. The compact slider sends its target when the change is committed, not continuously while dragging.
-
-Existing Lovelace configurations that explicitly saved `show_schedule_button: false` continue to hide the calendar; remove that option or set it to `true` to show the default pill.
-
-- The current-temperature chip pairs an `mdi:home-thermometer` house icon with the measured value and a space before the unit (for example `20,5 °C`); the chip carries `role="img"` with an accessible label while the house icon itself is decorative and hidden from assistive technology; the whole chip (icon included) is hidden when the option is off or the value is unavailable.
-- The status line prefers `hvac_action` (for example heating/cooling/off) and uses Home Assistant formatting/localization when available, falling back to a readable label; it also appends humidity when `show_humidity_chip` is enabled (independently of `show_state_chip`, using the same locale number formatting as temperatures) and a short relative time from `last_changed`/`last_updated` when `show_state_chip` is enabled.
-- The setpoint button opens the entity details (`hass-more-info`); minus/plus call `climate.set_temperature` through the existing step logic, and the separate calendar pill opens the same weekly schedule editor.
-- Names/status give up width first and truncate with ellipses; the status and relative time remain separated by a visible bullet. Temperature controls remain grouped on one line and scroll horizontally only when their full width does not fit; the separate calendar pill is outside that scroller.
-- Colors follow the active Home Assistant theme; no dark-only palette is hardcoded.
-
-The `compact` layout keeps the previous fixed two-row card: identity, optional chips, and calendar on the first row; target, temperature controls, and the HVAC mode dropdown on the second. Names, chips, and long targets (including `heat_cool` ranges) truncate on narrow cards rather than wrapping; full target text remains available through its accessible label and title. At exceptionally narrow widths, the second row scrolls horizontally so controls remain reachable; they are not necessarily all visible at once. Keyboard focus and input range controls are retained. In `bubble`, the HVAC mode dropdown is not rendered; modes remain changeable from the entity details opened by the setpoint, and `compact` keeps the inline dropdown.
+In either layout, tap an unused card area to toggle between `heat` and `off` when both modes are supported; Enter/Space works when the card is focused. Interactive child controls do not trigger the toggle. The target display updates immediately after using +/- and reverts if Home Assistant does not confirm the target or the service fails. The compact slider sends its target when the change is committed, not continuously while dragging.
 
 ## Weekly schedule
 
-The calendar button opens a weekly editor. A saved program runs only when **Enabled** is selected. The backend owns schedule persistence and execution; the dashboard can be closed without interrupting it.
+A saved program runs only when **Enabled**; the backend owns persistence and execution. Each climate entity has one program with:
 
-- One program is supported per climate entity; each program can contain multiple non-overlapping time slots, each with one target temperature.
-- Days use ISO weekday numbers; times use `HH:MM` in Home Assistant's timezone. Intervals are `[start, end)`. An end time earlier than its start crosses midnight; overlapping intervals are rejected.
-- Outside scheduled slots, the integration makes no climate call: it does not change the HVAC mode or turn the entity off.
-- A manual target change during a slot is not reasserted every minute. The schedule resumes at the next slot.
-- Unavailable climate entities remain pending and are retried when available. Targets must satisfy the entity's temperature limits and step; invalid targets are not silently rounded.
-- Scheduling `heat_cool` is rejected. The backend uses `climate.set_temperature` only.
-- Disabling or deleting a program does not restore a previous target.
+- **Slots** — non-overlapping intervals, each with one target temperature.
+- **Mode** (optional) — the HVAC mode set while the program is enabled (`set_hvac_mode`, applied before the target). Use it to schedule heating in winter and cooling in summer; with no mode selected the integration never changes the mode.
+- **Outside schedule** (optional) — the target applied outside every slot.
 
-The climate card's manual controls are separate from scheduling and should respect the HVAC capabilities exposed by the entity. The integration also exposes a diagnostic schedule sensor and the actions `bubble_climate_scheduler.save_program`, `bubble_climate_scheduler.set_enabled`, and `bubble_climate_scheduler.delete_program`.
+Rules:
 
-## Quality & verification
+- Days are ISO weekdays; times are `HH:MM` in Home Assistant's timezone. Intervals are `[start, end)`; an end earlier than the start crosses midnight.
+- Outside a slot, no **target temperature** call is made unless **Outside schedule** is configured (then it is applied once); with **Mode** configured, `set_hvac_mode` is still sent outside the slots.
+- A manual change (mode or target) is not reasserted until the next slot boundary.
+- Unavailable entities stay pending and are retried; targets must satisfy the entity's limits and step (no silent rounding).
+- A program blocked because the entity does not expose the configured **Mode** is retried when the entity reports a new mode list (`hvac_modes`), a changed range or step, or a `heat_cool` transition.
+- `heat_cool` is rejected (a program uses a single target); `off` sets the mode without a target.
 
-- Every release passes **27 JavaScript tests** (`npm test`) and **21 Python unit tests**, including DST transition case coverage.
-- The project minimum is Home Assistant 2025.1; entity suggestions use Home Assistant's `getEntitySuggestion` API on Home Assistant 2026.6 and later.
-- No Home Assistant/browser visual verification has been performed; the schedule editor labels are currently in English.
+### Actions
 
-## Support and releases
+- `bubble_climate_scheduler.save_program` — `climate_entity`, `enabled`, `slots`, optional `away_temperature`, optional `hvac_mode`.
+- `bubble_climate_scheduler.set_enabled` — `climate_entity`, `enabled`.
+- `bubble_climate_scheduler.delete_program` — `climate_entity`.
+
+```yaml
+service: bubble_climate_scheduler.save_program
+data:
+  climate_entity: climate.living_room
+  enabled: true
+  hvac_mode: cool
+  away_temperature: 17
+  slots:
+    - id: weekday-morning
+      days: [1, 2, 3, 4, 5]
+      start: "06:30"
+      end: "08:00"
+      temperature: 21
+```
+
+A diagnostic sensor exposes the configured programs.
+
+## Quality
+
+- **44 JavaScript tests** (`npm test`) and **27 Python unit tests**, including DST transition coverage.
+- Minimum Home Assistant version: 2025.1.
+- Card UI languages: English and Italian, chosen from `hass.locale.language` (other languages fall back to English).
+- No Home Assistant/browser visual verification has been performed.
+
+## Links
 
 - [Report a bug or request a feature](https://github.com/kerdx/bubble-climate-card/issues)
-- [Latest published release](https://github.com/kerdx/bubble-climate-card/releases/latest) · [Browse all releases](https://github.com/kerdx/bubble-climate-card/releases)
-- [MIT license](LICENSE)
+- [Releases](https://github.com/kerdx/bubble-climate-card/releases) · [MIT license](LICENSE)

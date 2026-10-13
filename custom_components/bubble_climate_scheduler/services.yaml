@@ -20,6 +20,24 @@ save_program:
       description: Weekly slots. Each slot requires id, days (1 Monday to 7 Sunday), start and end (HH:MM), and temperature.
       required: true
       example: '[{"id":"weekday-morning","days":[1,2,3,4,5],"start":"06:30","end":"08:00","temperature":20}]'
+    away_temperature:
+      name: Outside schedule temperature
+      description: Optional single target applied outside the scheduled slots. Omit or leave empty to keep the last target (no call outside slots).
+      required: false
+      example: 17
+    hvac_mode:
+      name: HVAC mode
+      description: Optional mode the program sets while enabled (applied before the target). Omit to leave the current mode alone. heat_cool is not supported because a program uses a single target.
+      required: false
+      selector:
+        select:
+          options:
+            - off
+            - heat
+            - cool
+            - auto
+            - dry
+            - fan_only
 set_enabled:
   name: Set program enabled
   description: Enable or disable the saved program for one climate entity.

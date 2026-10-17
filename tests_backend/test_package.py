@@ -18,7 +18,9 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(manifest["domain"], "bubble_climate_scheduler")
         self.assertEqual(hacs["homeassistant"], "2025.1.0")
         self.assertNotIn("category", hacs)
-        self.assertEqual(manifest["version"], "0.2.0")
+        # The exact version is owned by the changelog-consistency test; here
+        # only the semantic-version shape is enforced.
+        self.assertRegex(str(manifest["version"]), r"^\d+\.\d+\.\d+$")
         self.assertEqual(manifest["issue_tracker"], "https://github.com/kerdx/bubble-climate-card/issues")
         self.assertTrue(manifest["config_flow"])
         self.assertTrue(manifest["single_config_entry"])

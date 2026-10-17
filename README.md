@@ -125,7 +125,7 @@ A diagnostic sensor exposes the configured programs.
 
 ## Quality
 
-- **44 JavaScript tests** (`npm test`) and **27 Python unit tests**, including DST transition coverage.
+- **48 JavaScript tests** (`npm test`) and **40 Python unit tests**, including DST transition coverage.
 - Minimum Home Assistant version: 2025.1.
 - Card UI languages: English and Italian, chosen from `hass.locale.language` (other languages fall back to English).
 - No Home Assistant/browser visual verification has been performed.

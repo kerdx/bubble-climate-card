@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.1
+
+- Ship the card as a single source file (`www/bubble-climate-card.js`): JavaScript tests and packaging checks read the shipped asset, and any duplicate copy of the source fails packaging.
+- Migrate instead of discarding on version mismatch: storage payloads move through registered schema steps (`migrate_storage_data`) or are dropped with an explicit warning, and a config-entry `async_migrate_entry` rejects entries saved by newer releases.
+- Backend errors now carry machine-readable codes (`{code, context, message}`) in `last_error` and the diagnostic sensor; the card translates them in English and Italian with the new `errorLabel` helper.
+- Service-call errors are localized through the integration `exceptions` translations (EN/IT) plus translation metadata on `ScheduleValidationError`; the readable English message stays as fallback on releases without exception translation.
+- The visual editor groups options into localized sections (identity, visible elements, advanced controls) with per-field help texts and an inert live preview of the edited config.
+- CI runs the card and backend test suites alongside hassfest/HACS validation, and a manual release workflow gates on manifest/CHANGELOG consistency; packaging tests keep manifest version and CHANGELOG in sync.
+
 ## v0.2.0
 
 - Add an optional HVAC mode to a saved program: the scheduler applies `climate.set_hvac_mode` before the slot target, validates the mode against the entity's exposed `hvac_modes`, and leaves the current mode untouched when none is set. Schedulable program modes are `off`, `heat`, `cool`, `auto`, `dry`, and `fan_only`; `heat_cool` stays unsupported because a program uses a single target, and `off` sets the mode without a target.

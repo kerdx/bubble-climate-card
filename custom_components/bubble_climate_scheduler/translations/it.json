@@ -3,5 +3,79 @@
     "abort": {
       "single_instance_allowed": "È consentita una sola istanza."
     }
+  },
+  "exceptions": {
+    "invalid_program": {
+      "message": "Il programma è invalido: {message}"
+    },
+    "invalid_time": {
+      "message": "Gli orari devono usare il formato 24 ore HH:MM."
+    },
+    "invalid_temperature": {
+      "message": "Le temperature devono essere numeri finiti."
+    },
+    "invalid_hvac_mode": {
+      "message": "hvac_mode deve essere uno di off, heat, cool, auto, dry o fan_only."
+    },
+    "unsupported_hvac_mode": {
+      "message": "La modalità HVAC {mode} non è disponibile per questa entità climate."
+    },
+    "entity_validation_failed": {
+      "message": "L'entità climate non accetta questo programma: {message}"
+    },
+    "no_program": {
+      "message": "Non esiste una pianificazione per questa entità climate."
+    },
+    "invalid_enabled": {
+      "message": "enabled deve essere booleano."
+    },
+    "invalid_slots": {
+      "message": "slots deve essere una lista."
+    },
+    "too_many_slots": {
+      "message": "Un programma può contenere al massimo {max} fasce."
+    },
+    "empty_enabled_program": {
+      "message": "Un programma abilitato richiede almeno una fascia."
+    },
+    "invalid_away_temperature": {
+      "message": "La temperatura fuori orario deve essere un numero finito."
+    },
+    "invalid_slot_schema": {
+      "message": "Ogni fascia richiede id, days, start, end e temperature."
+    },
+    "invalid_slot_id": {
+      "message": "L'id della fascia deve iniziare con un carattere alfanumerico e usare lettere, cifre, punti, underscore o trattini."
+    },
+    "duplicate_slot_id": {
+      "message": "Id fascia duplicato: {id}."
+    },
+    "invalid_days": {
+      "message": "days deve essere una lista non vuota di giorni ISO 1..7."
+    },
+    "duplicate_days": {
+      "message": "days non può contenere duplicati."
+    },
+    "same_start_end": {
+      "message": "Inizio e fine devono differire."
+    },
+    "slots_overlap": {
+      "message": "Le fasce {a} e {b} si sovrappongono."
+    },
+    "climate_range_unavailable": {
+      "message": "L'intervallo o il passo temperatura del climate non è disponibile."
+    },
+    "climate_range_invalid": {
+      "message": "L'intervallo o il passo temperatura del climate non è valido."
+    },
+    "target_outside_limits": {
+      "message": "Il target {value} è fuori dai limiti del climate."
+    },
+    "target_off_step": {
+      "message": "Il target {value} non è allineato al passo temperatura del climate."
+    },
+    "heat_cool_unsupported": {
+      "message": "Le pianificazioni non supportano la modalità heat_cool."
+    }
   }
 }

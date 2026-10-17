@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from copy import deepcopy
+from collections.abc import Callable
 import math
 import re
 from typing import Any
@@ -17,6 +18,33 @@ _SCHEDULABLE_MODES = ("off", "heat", "cool", "auto", "dry", "fan_only")
 
 class ScheduleError(ValueError):
     """Invalid or conflicting program schedule."""
+
+    def __init__(self, message: str, code: str = "invalid_program", **context: Any) -> None:
+        """Carry a machine-readable ``code`` with substitution ``context``.
+
+        The message stays a human-readable English fallback (for service
+        callers and logs); the card translates ``code`` with ``context``.
+        """
+        super().__init__(message)
+        self.code = code
+        self.context = dict(context)
+
+
+def error_entry(code: str, message: str, **context: Any) -> dict[str, Any]:
+    """Build the canonical stored error shape {code, context, message}."""
+    return {"code": code, "context": dict(context), "message": message}
+
+
+def structured_error(error: Any) -> dict[str, Any]:
+    """Normalize any exception into :func:`error_entry` storage form.
+
+    Known ``code``/``context`` attributes win; anything else becomes
+    ``unexpected_failure`` with its text as ``message``, so the card can
+    localize known codes and fall back to the raw message otherwise.
+    """
+    code = getattr(error, "code", None) or "unexpected_failure"
+    context = getattr(error, "context", None)
+    return error_entry(code, str(error), **dict(context or {}))
 
 
 def availability_action(enabled: bool, has_active_slot: bool, old_state: Any, new_state: Any) -> str | None:
@@ -91,17 +119,17 @@ def restore_entity_state(snapshot: tuple[Any, ...]) -> None:
 
 def _minute(value: str) -> int:
     if not isinstance(value, str) or not _TIME.fullmatch(value):
-        raise ScheduleError("Time must use HH:MM in 24-hour format")
+        raise ScheduleError("Time must use HH:MM in 24-hour format", "invalid_time")
     hour, minute = map(int, value.split(":"))
     return hour * 60 + minute
 
 
 def _temperature(value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ScheduleError("Temperature must be a finite number")
+        raise ScheduleError("Temperature must be a finite number", "invalid_temperature")
     result = float(value)
     if not math.isfinite(result):
-        raise ScheduleError("Temperature must be a finite number")
+        raise ScheduleError("Temperature must be a finite number", "invalid_temperature")
     return result
 
 
@@ -109,7 +137,7 @@ def _hvac_mode(value: Any) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or value not in _SCHEDULABLE_MODES:
-        raise ScheduleError("hvac_mode must be one of " + ", ".join(_SCHEDULABLE_MODES))
+        raise ScheduleError("hvac_mode must be one of " + ", ".join(_SCHEDULABLE_MODES), "invalid_hvac_mode")
     return value
 
 
@@ -119,21 +147,21 @@ def validate_target(target: Any, minimum: Any, maximum: Any, step: Any) -> float
     try:
         low, high, increment = float(minimum), float(maximum), float(step)
     except (TypeError, ValueError) as err:
-        raise ScheduleError("Climate temperature range or step is unavailable") from err
+        raise ScheduleError("Climate temperature range or step is unavailable", "climate_range_unavailable") from err
     if not all(math.isfinite(item) for item in (low, high, increment)) or increment <= 0 or low >= high:
-        raise ScheduleError("Climate temperature range or step is invalid")
+        raise ScheduleError("Climate temperature range or step is invalid", "climate_range_invalid")
     if value < low or value > high:
-        raise ScheduleError(f"Target {value:g} is outside climate limits")
+        raise ScheduleError(f"Target {value:g} is outside climate limits", "target_outside_limits", value=value)
     units = (value - low) / increment
     if not math.isclose(units, round(units), rel_tol=0, abs_tol=1e-7):
-        raise ScheduleError(f"Target {value:g} is not aligned to climate temperature step")
+        raise ScheduleError(f"Target {value:g} is not aligned to climate temperature step", "target_off_step", value=value)
     return value
 
 
 def validate_single_target_mode(state_mode: Any, attribute_mode: Any = None) -> None:
     """Reject climate modes that cannot safely accept a single temperature."""
     if state_mode == "heat_cool" or attribute_mode == "heat_cool":
-        raise ScheduleError("Schedules do not support heat_cool mode")
+        raise ScheduleError("Schedules do not support heat_cool mode", "heat_cool_unsupported")
 
 
 def target_needs_update(current: Any, target: float, step: float) -> bool:
@@ -154,13 +182,13 @@ def target_needs_update(current: Any, target: float, step: float) -> bool:
 
 def validate_program(slots: Any, enabled: Any = False, away_temperature: Any = None, hvac_mode: Any = None) -> dict[str, Any]:
     if not isinstance(enabled, bool):
-        raise ScheduleError("enabled must be boolean")
+        raise ScheduleError("enabled must be boolean", "invalid_enabled")
     if not isinstance(slots, list):
-        raise ScheduleError("slots must be a list")
+        raise ScheduleError("slots must be a list", "invalid_slots")
     if len(slots) > 50:
-        raise ScheduleError("A program may contain at most 50 slots")
+        raise ScheduleError("A program may contain at most 50 slots", "too_many_slots", max=50)
     if enabled and not slots:
-        raise ScheduleError("An enabled program must contain at least one slot")
+        raise ScheduleError("An enabled program must contain at least one slot", "empty_enabled_program")
     away: float | None
     if away_temperature is None:
         away = None
@@ -168,28 +196,28 @@ def validate_program(slots: Any, enabled: Any = False, away_temperature: Any = N
         try:
             away = _temperature(away_temperature)
         except ScheduleError as err:
-            raise ScheduleError("Outside schedule temperature must be a finite number") from err
+            raise ScheduleError("Outside schedule temperature must be a finite number", "invalid_away_temperature") from err
     mode = _hvac_mode(hvac_mode)
     result: list[dict[str, Any]] = []
     ids: set[str] = set()
     occupied: dict[int, list[tuple[int, int, str]]] = {day: [] for day in range(1, 8)}
     for slot in slots:
         if not isinstance(slot, dict) or set(slot) != {"id", "days", "start", "end", "temperature"}:
-            raise ScheduleError("Each slot requires exactly id, days, start, end, and temperature")
+            raise ScheduleError("Each slot requires exactly id, days, start, end, and temperature", "invalid_slot_schema")
         slot_id = slot["id"]
         if not isinstance(slot_id, str) or not _SLOT_ID.fullmatch(slot_id):
-            raise ScheduleError("Slot id must be 1..64 ASCII letters, digits, dots, underscores, or hyphens; it must start alphanumeric")
+            raise ScheduleError("Slot id must be 1..64 ASCII letters, digits, dots, underscores, or hyphens; it must start alphanumeric", "invalid_slot_id")
         if slot_id in ids:
-            raise ScheduleError(f"Duplicate slot id: {slot_id}")
+            raise ScheduleError(f"Duplicate slot id: {slot_id}", "duplicate_slot_id", id=slot_id)
         ids.add(slot_id)
         days = slot["days"]
         if not isinstance(days, list) or not days or any(type(day) is not int or day not in range(1, 8) for day in days):
-            raise ScheduleError("days must be a non-empty list of ISO weekdays 1..7")
+            raise ScheduleError("days must be a non-empty list of ISO weekdays 1..7", "invalid_days")
         if len(set(days)) != len(days):
-            raise ScheduleError("days cannot contain duplicates")
+            raise ScheduleError("days cannot contain duplicates", "duplicate_days")
         start, end = _minute(slot["start"]), _minute(slot["end"])
         if start == end:
-            raise ScheduleError("start and end must differ")
+            raise ScheduleError("start and end must differ", "same_start_end")
         temperature = _temperature(slot["temperature"])
         clean = {"id": slot_id, "days": list(days), "start": slot["start"], "end": slot["end"], "temperature": temperature}
         result.append(clean)
@@ -203,7 +231,7 @@ def validate_program(slots: Any, enabled: Any = False, away_temperature: Any = N
                     continue
                 for old_lo, old_hi, old_id in occupied[target_day]:
                     if lo < old_hi and old_lo < hi:
-                        raise ScheduleError(f"Slots {old_id} and {slot_id} overlap")
+                        raise ScheduleError(f"Slots {old_id} and {slot_id} overlap", "slots_overlap", a=old_id, b=slot_id)
                 occupied[target_day].append((lo, hi, slot_id))
     return {"enabled": enabled, "slots": result, "away_temperature": away, "hvac_mode": mode}
 
@@ -325,3 +353,37 @@ def _active_timezone_transitions(slots: list[dict[str, Any]], now: datetime) -> 
                 found.append(transition)
         cursor = following
     return found
+
+
+# Storage schema migrations, keyed by the schema version a payload is being
+# upgraded *from*. To introduce a new storage layout: bump STORAGE_VERSION in
+# const.py, register a callable that rewrites a payload of the previous
+# version into the next one, and keep the chain complete so every stored
+# version can reach the current one. Payloads written by a newer version are
+# rejected, never silently downgraded.
+DATA_MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+
+
+def migrate_storage_data(data: Any, from_version: Any, to_version: int) -> dict[str, Any] | None:
+    """Return ``data`` upgraded from ``from_version`` to ``to_version``.
+
+    Steps come from :data:`DATA_MIGRATIONS` and are applied in order; the
+    returned payload is a copy with ``schema_version`` set to ``to_version``
+    (the input mapping is never mutated). ``None`` marks a payload that
+    cannot be migrated -- non-dict data, a missing schema version, a request
+    to move *backwards*, a version with no registered step, or a step that
+    produced invalid data -- so the caller must discard it and log.
+    """
+    if not isinstance(data, dict) or not isinstance(from_version, int) or from_version < 1 or from_version > to_version:
+        return None
+    # Migrate a deep copy: a step may rewrite nested structures in place
+    # without ever touching the stored payload the caller holds.
+    result: Any = deepcopy(data)
+    for version in range(from_version, to_version):
+        migration = DATA_MIGRATIONS.get(version)
+        if migration is None:
+            return None
+        result = migration(result)
+        if not isinstance(result, dict):
+            return None
+    return {**result, "schema_version": to_version}

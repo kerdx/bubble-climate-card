@@ -62,6 +62,57 @@ const STRINGS = {
     },
     modes: { heat: 'Heat', cool: 'Cool', off: 'Off', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' },
     statuses: { heating: 'Heating', cooling: 'Cooling', drying: 'Drying', fan: 'Fan', idle: 'Idle', off: 'Off', preheating: 'Preheating', defrosting: 'Defrosting', heat: 'Heat', cool: 'Cool', auto: 'Auto', heat_cool: 'Heat / cool', dry: 'Dry', fan_only: 'Fan only' },
+    // Backend last_error carries {code, context, message}; keys are the
+    // machine-readable codes from the scheduler backend, {placeholders}
+    // are substituted from the error context (plus its message).
+    errors: {
+      invalid_program: '{message}',
+      invalid_time: 'Times must use the HH:MM 24-hour format.',
+      invalid_temperature: 'Temperatures must be finite numbers.',
+      invalid_hvac_mode: "hvac_mode must be one of off, heat, cool, auto, dry, or fan_only.",
+      unsupported_hvac_mode: 'HVAC mode {mode} is not available for this climate entity.',
+      entity_validation_failed: 'The climate entity does not accept this program: {message}',
+      entity_unavailable: 'The climate entity is unavailable; the target stays pending.',
+      service_call_failed: 'The climate service call failed: {message}',
+      no_program: 'No schedule exists for this climate entity.',
+      unexpected_failure: 'Scheduler error: {message}',
+      invalid_enabled: 'enabled must be boolean.',
+      invalid_slots: 'slots must be a list.',
+      too_many_slots: 'A program may contain at most {max} slots.',
+      empty_enabled_program: 'An enabled program needs at least one slot.',
+      invalid_away_temperature: 'The outside-schedule temperature must be a finite number.',
+      invalid_slot_schema: 'Each slot needs id, days, start, end, and temperature.',
+      invalid_slot_id: 'Slot id must start alphanumeric and use letters, digits, dots, underscores, or hyphens.',
+      duplicate_slot_id: 'Duplicate slot id: {id}.',
+      invalid_days: 'days must be a non-empty list of ISO weekdays 1..7.',
+      duplicate_days: 'days cannot contain duplicates.',
+      same_start_end: 'Start and end must differ.',
+      slots_overlap: 'Slots {a} and {b} overlap.',
+      climate_range_unavailable: 'The climate temperature range or step is unavailable.',
+      climate_range_invalid: 'The climate temperature range or step is invalid.',
+      target_outside_limits: 'Target {value} is outside the climate limits.',
+      target_off_step: 'Target {value} is not aligned to the climate temperature step.',
+      heat_cool_unsupported: 'Schedules do not support the heat_cool mode.',
+    },
+    sections: {
+      identity: 'Identity and appearance',
+      chips: 'Visible elements',
+      controls: 'Controls and steps',
+    },
+    help: {
+      entity: 'Climate entity controlled by this card.',
+      name: 'Card title; defaults to the entity name.',
+      icon: 'Overrides the circular status icon.',
+      layout: 'bubble is the horizontal pill card; compact is the previous two-row layout. row remains a deprecated alias.',
+      step: 'Increment used by the +/- controls. Leave empty to follow the thermostat target_temp_step (0.5 as fallback).',
+      show_state_chip: 'HVAC state and relative time in the status line.',
+      show_current_temperature_chip: 'Measured temperature chip.',
+      show_humidity_chip: 'Room humidity in the status line when the entity provides it.',
+      show_unavailable_badge: 'Indicator when the entity is unavailable.',
+      show_mode_buttons: 'HVAC mode dropdown; in the bubble layout modes change from the entity details.',
+      show_step_controls: 'Show the decrease/increase arrows around the setpoint.',
+      show_schedule_button: 'Show the standalone calendar pill that opens the weekly scheduler.',
+    },
   },
   it: {
     unavailable: 'Non disponibile',
@@ -119,6 +170,54 @@ const STRINGS = {
     },
     modes: { heat: 'Caldo', cool: 'Freddo', off: 'Spento', auto: 'Automatico', heat_cool: 'Caldo / freddo', dry: 'Deumidificazione', fan_only: 'Solo ventilazione' },
     statuses: { heating: 'Riscaldamento', cooling: 'Raffreddamento', drying: 'Deumidificazione', fan: 'Ventilazione', idle: 'Inattivo', off: 'Spento', preheating: 'Preriscaldamento', defrosting: 'Sbrinamento', heat: 'Caldo', cool: 'Freddo', auto: 'Automatico', heat_cool: 'Caldo / freddo', dry: 'Deumidificazione', fan_only: 'Solo ventilazione' },
+    errors: {
+      invalid_program: '{message}',
+      invalid_time: 'Gli orari devono usare il formato 24 ore HH:MM.',
+      invalid_temperature: 'Le temperature devono essere numeri finiti.',
+      invalid_hvac_mode: "hvac_mode deve essere uno di off, heat, cool, auto, dry o fan_only.",
+      unsupported_hvac_mode: 'La modalità HVAC {mode} non è disponibile per questa entità climate.',
+      entity_validation_failed: 'L\u2019entità climate non accetta questo programma: {message}',
+      entity_unavailable: 'L\u2019entità climate non è disponibile; il target resta in attesa.',
+      service_call_failed: 'La chiamata al servizio climate è fallita: {message}',
+      no_program: 'Non esiste una pianificazione per questa entità climate.',
+      unexpected_failure: 'Errore dello scheduler: {message}',
+      invalid_enabled: 'enabled deve essere booleano.',
+      invalid_slots: 'slots deve essere una lista.',
+      too_many_slots: 'Un programma può contenere al massimo {max} fasce.',
+      empty_enabled_program: 'Un programma abilitato richiede almeno una fascia.',
+      invalid_away_temperature: 'La temperatura fuori orario deve essere un numero finito.',
+      invalid_slot_schema: 'Ogni fascia richiede id, days, start, end e temperature.',
+      invalid_slot_id: 'L\u2019id della fascia deve iniziare con un carattere alfanumerico e usare lettere, cifre, punti, underscore o trattini.',
+      duplicate_slot_id: 'Id fascia duplicato: {id}.',
+      invalid_days: 'days deve essere una lista non vuota di giorni ISO 1..7.',
+      duplicate_days: 'days non può contenere duplicati.',
+      same_start_end: 'Inizio e fine devono differire.',
+      slots_overlap: 'Le fasce {a} e {b} si sovrappongono.',
+      climate_range_unavailable: 'L\u2019intervallo o il passo temperatura del climate non è disponibile.',
+      climate_range_invalid: 'L\u2019intervallo o il passo temperatura del climate non è valido.',
+      target_outside_limits: 'Il target {value} è fuori dai limiti del climate.',
+      target_off_step: 'Il target {value} non è allineato al passo temperatura del climate.',
+      heat_cool_unsupported: 'Le pianificazioni non supportano la modalità heat_cool.',
+    },
+    sections: {
+      identity: 'Identità e aspetto',
+      chips: 'Elementi visibili',
+      controls: 'Controlli e passi',
+    },
+    help: {
+      entity: 'Entità climate controllata da questa card.',
+      name: 'Titolo della card; se vuoto usa il nome dell\u2019entità.',
+      icon: 'Sostituisce l\u2019icona circolare di stato.',
+      layout: 'bubble è la card a pillole orizzontale; compact è il layout precedente a due righe. row resta un alias deprecato.',
+      step: 'Passo dei pulsanti +/-. Vuoto per seguire il target_temp_step del termostato (0.5 come fallback).',
+      show_state_chip: 'Stato HVAC e tempo relativo nella riga di stato.',
+      show_current_temperature_chip: 'Chip della temperatura misurata.',
+      show_humidity_chip: 'Umidità nella riga di stato quando l\u2019entità la fornisce.',
+      show_unavailable_badge: 'Indicatore quando l\u2019entità non è disponibile.',
+      show_mode_buttons: 'Menu a tendina delle modalità HVAC; nel layout bubble si cambiano dai dettagli dell\u2019entità.',
+      show_step_controls: 'Mostra le frecce diminuisci/aumenta attorno al setpoint.',
+      show_schedule_button: 'Mostra la pillola calendario che apre la pianificazione settimanale.',
+    },
   },
 };
 // Modes a program may set; heat_cool is excluded because a program uses a
@@ -127,6 +226,18 @@ const SCHEDULABLE_MODES = ['off', 'heat', 'cool', 'auto', 'dry', 'fan_only'];
 export const resolveLanguage = (language) => (typeof language === 'string' && language.trim().toLowerCase().startsWith('it') ? 'it' : 'en');
 export const cardStrings = (language) => STRINGS[resolveLanguage(language)];
 export const fieldLabel = (strings, name) => strings.fields[name] || String(name ?? '').replaceAll('_', ' ');
+export const errorLabel = (strings, error) => {
+  if (error == null || error === '') return '';
+  const dict = typeof error === 'object' ? error : null;
+  const code = dict?.code != null ? String(dict.code) : null;
+  const message = dict?.message ?? String(error);
+  const template = code ? strings?.errors?.[code] : null;
+  if (!template) return message || String(error);
+  // Placeholders resolve from the error context first, then fall back to the
+  // stored raw message so a template with {message} always has a value.
+  const values = { ...(dict?.context || {}), message };
+  return String(template).replace(/\{(\w+)\}/g, (token, key) => (values[key] != null ? String(values[key]) : token));
+};
 export const modeLabel = (mode, strings = STRINGS.en) => strings.modes[mode] || String(mode ?? '').replaceAll('_', ' ');
 export const effectiveStep = (entity, fallback = 0.5, override = null) => {
   // An explicitly configured step wins over the entity's declared step, so a
@@ -334,14 +445,28 @@ export const getEntitySuggestion = (_hass, entityId) => typeof entityId === 'str
   ? { type: 'custom:bubble-climate-card', ...defaultCardConfig(entityId) }
   : null;
 
+const field = (name, selector) => ({ name, selector });
+const grid = (name, schema) => ({ type: 'grid', name, schema });
+const expandable = (name, schema, collapsed = true) => ({ type: 'expandable', name, collapsed, schema });
 export const configSchema = [
-  { name: 'entity', required: true, selector: { entity: { filter: { domain: ['climate'] } } } },
-  { name: 'name', selector: { text: {} } },
-  { name: 'icon', selector: { icon: {} } },
-  { name: 'layout', selector: { select: { mode: 'dropdown', options: ['bubble', 'compact'] } } },
-  ...['show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button'].map((name) => ({ name, selector: { boolean: {} } })),
-  { name: 'step', selector: { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } } },
+  grid('identity', [
+    field('entity', { entity: { filter: { domain: ['climate'] } } }),
+    field('name', { text: {} }),
+    field('icon', { icon: {} }),
+    field('layout', { select: { mode: 'dropdown', options: ['bubble', 'compact'] } }),
+  ]),
+  grid('chips', ['show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge'].map((name) => field(name, { boolean: {} }))),
+  // Advanced controls start collapsed: new presets omit step so the entity's
+  // declared target_temp_step is respected by default.
+  expandable('controls', [
+    ...['show_mode_buttons', 'show_step_controls', 'show_schedule_button'].map((name) => field(name, { boolean: {} })),
+    field('step', { number: { min: 0.01, max: 10, step: 0.01, mode: 'box' } }),
+  ]),
 ];
+export const configSchemaFields = () => {
+  const flatten = (items) => items.flatMap((item) => (Array.isArray(item?.schema) ? flatten(item.schema) : [item]));
+  return flatten(configSchema).filter((item) => item.name);
+};
 
 export const sameCardConfig = (a, b) => {
   if (a === b) return true;
@@ -357,26 +482,47 @@ export class BubbleClimateCardEditor extends HTMLElementBase {
     // form on every hass tick (or config echo) dropped keyboard focus, so
     // typing a name required one click per letter.
     if (this._form) this._form.hass = value;
+    if (this._preview) this._preview.hass = value;
   }
   setConfig(config) {
     this._config = { ...defaultCardConfig(config?.entity || 'climate.example'), ...config, layout: normalizeLayout(config?.layout) || 'bubble' };
+    this._formData = null;
+    this._previewData = null;
     this._render();
   }
+  _strings() { return cardStrings(this._hass?.locale?.language); }
   _render() {
     if (!this.attachShadow) return;
     if (!this._form) {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-      const form = document.createElement('ha-form');
+      // The grouped schema (grid/expandable) is served by hui-form when the
+      // dashboard frontend is loaded; ha-form is the standalone fallback.
+      const form = document.createElement(globalThis.customElements?.get?.('hui-form') ? 'hui-form' : 'ha-form');
       form.schema = configSchema;
-      form.computeLabel = (schema) => fieldLabel(cardStrings(this._hass?.locale?.language), schema.name);
+      form.computeLabel = (schema) => this._strings().sections[schema.name] || fieldLabel(this._strings(), schema.name);
+      // Field descriptions come from the localized help guide; form versions
+      // without computeHelper support simply ignore the property.
+      form.computeHelper = (schema) => this._strings().help[schema.name] || '';
       form.addEventListener('value-changed', (event) => {
         event.stopPropagation();
         this._config = { ...this._config, ...(event.detail?.value || {}) };
         this._formData = { ...this._config };
         this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
+        if (this._preview) { this._preview.setConfig({ ...this._config }); this._previewData = { ...this._config }; }
       });
-      this.shadowRoot.append(form);
+      // Live preview: the same card component fed with the edited config and
+      // the real hass object, inert because clicks are disabled on the box.
+      const previewBox = document.createElement('div');
+      previewBox.className = 'preview';
+      const style = document.createElement('style');
+      style.textContent = '.preview{pointer-events:none}';
+      const preview = document.createElement('bubble-climate-card');
+      preview.setConfig({ ...this._config });
+      this._previewData = { ...this._config };
+      previewBox.append(preview);
+      this.shadowRoot.append(form, previewBox);
       this._form = form;
+      this._preview = preview;
     }
     this._form.hass = this._hass;
     // Only push a changed config back into the form; echoing our own edit would
@@ -385,6 +531,11 @@ export class BubbleClimateCardEditor extends HTMLElementBase {
       this._form.data = { ...this._config };
       this._formData = { ...this._config };
     }
+    if (this._preview && !sameCardConfig(this._previewData, this._config)) {
+      this._preview.setConfig({ ...this._config });
+      this._previewData = { ...this._config };
+    }
+    if (this._preview && this._hass) this._preview.hass = this._hass;
   }
 }
 
@@ -725,7 +876,7 @@ export class BubbleClimateCard extends HTMLElementBase {
       statusline.append(stLabel, stValue);
       if (program?.active_slot_id) { const act = document.createElement('span'); act.textContent = t.active(program.active_slot_id); statusline.append(act); }
       body.append(statusline);
-      if (program?.last_error) { const p = document.createElement('p'); p.className = 'error'; p.textContent = String(program.last_error); body.append(p); }
+      if (program?.last_error) { const p = document.createElement('p'); p.className = 'error'; p.textContent = errorLabel(t, program.last_error); body.append(p); }
       const enabledLabel = document.createElement('label'), enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(this._scheduleDraft.enabled); enabledLabel.className = 'switch'; enabledLabel.append(enabled, document.createTextNode(t.enabled)); enabled.addEventListener('change', () => this._scheduleDraft.enabled = enabled.checked);      body.append(enabledLabel);
       const modeField = document.createElement('div'); modeField.className = 'field mode';
       const modeFieldLabel = document.createElement('label'); modeFieldLabel.textContent = t.hvacMode;
@@ -765,8 +916,8 @@ export class BubbleClimateCard extends HTMLElementBase {
       const add = document.createElement('button'); add.className = 'btn ghost'; add.textContent = t.addSlot; add.addEventListener('click', () => { this._scheduleDraft.slots.push({ id: globalThis.crypto?.randomUUID?.() || `slot-${Date.now()}-${Math.random().toString(36).slice(2)}`, days: [1], start: '08:00', end: '09:00', temperature: 20 }); renderSlots(); });
       body.append(add); body.append(error);
       const actions = document.createElement('div'); actions.className = 'dlg-actions';
-      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = t.deleteProgram; del.addEventListener('click', async () => { try { await this._hass.callService('bubble_climate_scheduler', 'delete_program', { climate_entity: this.config.entity }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(del);
-      const save = document.createElement('button'); save.className = 'btn primary'; save.textContent = t.saveProgram; save.addEventListener('click', async () => { const issue = validateScheduleDraft(this._scheduleDraft, t); if (issue) { error.textContent = issue; return; } try { await this._hass.callService('bubble_climate_scheduler', 'save_program', { climate_entity: this.config.entity, enabled: this._scheduleDraft.enabled, slots: this._scheduleDraft.slots.map((s) => ({ id: s.id, days: [...s.days].sort((a, b) => a - b), start: s.start, end: s.end, temperature: Number(s.temperature) })), away_temperature: awayTemperaturePayload(this._scheduleDraft.awayTemperature), hvac_mode: this._scheduleDraft.hvacMode || null }); this._closeSchedule(dialog); } catch (err) { error.textContent = String(err?.message || err); } }); actions.append(save);
+      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = t.deleteProgram; del.addEventListener('click', async () => { try { await this._hass.callService('bubble_climate_scheduler', 'delete_program', { climate_entity: this.config.entity }); this._closeSchedule(dialog); } catch (err) { error.textContent = errorLabel(t, err?.message || err); } }); actions.append(del);
+      const save = document.createElement('button'); save.className = 'btn primary'; save.textContent = t.saveProgram; save.addEventListener('click', async () => { const issue = validateScheduleDraft(this._scheduleDraft, t); if (issue) { error.textContent = issue; return; } try { await this._hass.callService('bubble_climate_scheduler', 'save_program', { climate_entity: this.config.entity, enabled: this._scheduleDraft.enabled, slots: this._scheduleDraft.slots.map((s) => ({ id: s.id, days: [...s.days].sort((a, b) => a - b), start: s.start, end: s.end, temperature: Number(s.temperature) })), away_temperature: awayTemperaturePayload(this._scheduleDraft.awayTemperature), hvac_mode: this._scheduleDraft.hvacMode || null }); this._closeSchedule(dialog); } catch (err) { error.textContent = errorLabel(t, err?.message || err); } }); actions.append(save);
       body.append(actions);
     }
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); this._closeSchedule(dialog); }); this.shadowRoot.append(dialog);

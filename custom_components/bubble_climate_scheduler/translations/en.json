@@ -3,5 +3,79 @@
     "abort": {
       "single_instance_allowed": "Only one instance is allowed."
     }
+  },
+  "exceptions": {
+    "invalid_program": {
+      "message": "The schedule program is invalid: {message}"
+    },
+    "invalid_time": {
+      "message": "Times must use the HH:MM 24-hour format."
+    },
+    "invalid_temperature": {
+      "message": "Temperatures must be finite numbers."
+    },
+    "invalid_hvac_mode": {
+      "message": "hvac_mode must be one of off, heat, cool, auto, dry, or fan_only."
+    },
+    "unsupported_hvac_mode": {
+      "message": "HVAC mode {mode} is not available for this climate entity."
+    },
+    "entity_validation_failed": {
+      "message": "The climate entity does not accept this program: {message}"
+    },
+    "no_program": {
+      "message": "No schedule exists for this climate entity."
+    },
+    "invalid_enabled": {
+      "message": "enabled must be boolean."
+    },
+    "invalid_slots": {
+      "message": "slots must be a list."
+    },
+    "too_many_slots": {
+      "message": "A program may contain at most {max} slots."
+    },
+    "empty_enabled_program": {
+      "message": "An enabled program needs at least one slot."
+    },
+    "invalid_away_temperature": {
+      "message": "The outside-schedule temperature must be a finite number."
+    },
+    "invalid_slot_schema": {
+      "message": "Each slot needs id, days, start, end, and temperature."
+    },
+    "invalid_slot_id": {
+      "message": "Slot id must start alphanumeric and use letters, digits, dots, underscores, or hyphens."
+    },
+    "duplicate_slot_id": {
+      "message": "Duplicate slot id: {id}."
+    },
+    "invalid_days": {
+      "message": "days must be a non-empty list of ISO weekdays 1..7."
+    },
+    "duplicate_days": {
+      "message": "days cannot contain duplicates."
+    },
+    "same_start_end": {
+      "message": "Start and end must differ."
+    },
+    "slots_overlap": {
+      "message": "Slots {a} and {b} overlap."
+    },
+    "climate_range_unavailable": {
+      "message": "The climate temperature range or step is unavailable."
+    },
+    "climate_range_invalid": {
+      "message": "The climate temperature range or step is invalid."
+    },
+    "target_outside_limits": {
+      "message": "Target {value} is outside the climate limits."
+    },
+    "target_off_step": {
+      "message": "Target {value} is not aligned to the climate temperature step."
+    },
+    "heat_cool_unsupported": {
+      "message": "Schedules do not support the heat_cool mode."
+    }
   }
 }

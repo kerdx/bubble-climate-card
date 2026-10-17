@@ -11,14 +11,15 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components.frontend import add_extra_js_url, remove_extra_js_url
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, FRONTEND_URL, PLATFORMS, STORAGE_KEY, STORAGE_VERSION
+from .const import DOMAIN, FRONTEND_URL, PLATFORMS, STORAGE_KEY, STORAGE_VERSION, CONFIG_ENTRY_VERSION
 from .schedule import (
     ScheduleError,
     availability_action,
@@ -31,6 +32,9 @@ from .schedule import (
     target_needs_update,
     snapshot_entity_state,
     restore_entity_state,
+    migrate_storage_data,
+    structured_error,
+    error_entry,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +42,20 @@ _LOGGER = logging.getLogger(__name__)
 
 class ScheduleValidationError(HomeAssistantError):
     """Invalid schedule request, distinct from failed persistent writes."""
+
+    def __init__(self, message: str, *args: Any, code: str | None = None, context: dict[str, Any] | None = None) -> None:
+        """Keep the readable English message and the machine-readable code.
+
+        The translation metadata lets Home Assistant render the localized
+        message where supported; on releases without exception translation
+        the English message remains the visible fallback.
+        """
+        super().__init__(message, *args)
+        self.code = code or "invalid_program"
+        self.context = dict(context or {})
+        self.translation_domain = DOMAIN
+        self.translation_key = self.code
+        self.translation_placeholders = {key: str(value) for key, value in self.context.items()}
 
 
 class Scheduler:
@@ -58,9 +76,27 @@ class Scheduler:
 
     async def async_load(self) -> None:
         stored = await self.store.async_load()
-        if not isinstance(stored, dict) or stored.get("schema_version") != STORAGE_VERSION:
+        if not isinstance(stored, dict):
             self.programs = {}
             return
+        stored_version = stored.get("schema_version")
+        if not isinstance(stored_version, int):
+            _LOGGER.warning("Ignoring stored schedules written without a schema version")
+            self.programs = {}
+            return
+        if stored_version != STORAGE_VERSION:
+            migrated = migrate_storage_data(stored, stored_version, STORAGE_VERSION)
+            if migrated is None:
+                _LOGGER.warning(
+                    "Discarding stored schedules: schema version %s cannot be migrated to %s",
+                    stored_version,
+                    STORAGE_VERSION,
+                )
+                self.programs = {}
+                return
+            stored = migrated
+            # The migrated payload stays on disk until the next program write;
+            # the loader re-migrates idempotently, so no startup save is needed.
         raw_programs = stored.get("programs", {})
         if not isinstance(raw_programs, dict):
             return
@@ -120,7 +156,11 @@ class Scheduler:
                 if state is not None and state.state not in ("unavailable", "unknown"):
                     _validate_program(state, program)
         except (ScheduleError, HomeAssistantError) as err:
-            raise ScheduleValidationError(str(err)) from err
+            # Pure schedule errors carry a code; entity-state checks do not,
+            # and fall back to the entity_validation_failed code that shows
+            # the readable message.
+            code = getattr(err, "code", None) or "entity_validation_failed"
+            raise ScheduleValidationError(str(err), code=code, context=getattr(err, "context", None)) from err
         async with self._evaluation_lock:
             snapshot = self._snapshot_entity(entity_id)
             try:
@@ -140,14 +180,15 @@ class Scheduler:
     async def async_enable(self, entity_id: str, enabled: bool) -> None:
         async with self._evaluation_lock:
             if entity_id not in self.programs:
-                raise ScheduleValidationError("No schedule exists for this climate entity")
+                raise ScheduleValidationError("No schedule exists for this climate entity", code="no_program")
             if enabled:
                 state = self.hass.states.get(entity_id)
                 if state is not None and state.state not in ("unavailable", "unknown"):
                     try:
                         _validate_program(state, self.programs[entity_id])
-                    except HomeAssistantError as err:
-                        raise ScheduleValidationError(str(err)) from err
+                    except (ScheduleError, HomeAssistantError) as err:
+                        code = getattr(err, "code", None) or "entity_validation_failed"
+                        raise ScheduleValidationError(str(err), code=code, context=getattr(err, "context", None)) from err
             snapshot = self._snapshot_entity(entity_id)
             try:
                 self.programs[entity_id]["enabled"] = enabled
@@ -177,15 +218,15 @@ class Scheduler:
                 self._rollback_entity(snapshot)
                 raise
 
-    def _set_error(self, entity_id: str, message: str, *, log: bool = False) -> None:
-        self.errors[entity_id] = message
+    def _set_error(self, entity_id: str, code: str, message: str, *, log: bool = False) -> None:
+        self.errors[entity_id] = error_entry(code, message)
         if log and self._last_logged_error.get(entity_id) != message:
             _LOGGER.warning("Could not apply schedule to %s: %s", entity_id, message)
             self._last_logged_error[entity_id] = message
 
-    async def async_report_error(self, entity_id: str, message: str) -> None:
+    async def async_report_error(self, entity_id: str, error: HomeAssistantError) -> None:
         async with self._evaluation_lock:
-            self.errors[entity_id] = message
+            self.errors[entity_id] = structured_error(error)
             self._update_sensor()
 
     async def async_evaluate(self, only: str | None = None) -> None:
@@ -212,7 +253,7 @@ class Scheduler:
                 state = self.hass.states.get(entity_id)
                 if state is None or state.state in ("unavailable", "unknown"):
                     self.pending.add(entity_id)
-                    self._set_error(entity_id, "Climate entity is unavailable; target is pending")
+                    self._set_error(entity_id, "entity_unavailable", "Climate entity is unavailable; target is pending")
                     continue
                 try:
                     if mode is not None:
@@ -224,7 +265,7 @@ class Scheduler:
                     # but not on every minute tick.
                     self.pending.discard(entity_id)
                     self.applied_slot[entity_id] = apply_key
-                    self._set_error(entity_id, str(err), log=True)
+                    self._set_error(entity_id, getattr(err, "code", None) or "entity_validation_failed", str(err), log=True)
                     continue
                 try:
                     if mode is not None and state.state != mode:
@@ -245,7 +286,7 @@ class Scheduler:
                     # A service call may fail transiently. Keep it pending for the
                     # minute tick/availability event; suppress identical log spam.
                     self.pending.add(entity_id)
-                    self._set_error(entity_id, str(err) or "Climate service call failed; target is pending", log=True)
+                    self._set_error(entity_id, "service_call_failed", str(err) or "Climate service call failed; target is pending", log=True)
             self._update_sensor()
 
     async def async_state_changed(self, event: Any) -> None:
@@ -266,7 +307,7 @@ class Scheduler:
             action = availability_action(program["enabled"], active, old_state, new.state)
             if action == "pending":
                 self.pending.add(entity_id)
-                self._set_error(entity_id, "Climate entity is unavailable; target is pending")
+                self._set_error(entity_id, "entity_unavailable", "Climate entity is unavailable; target is pending")
                 self._update_sensor()
             elif action == "retry":
                 # A restore during an active slot is actionable even if no prior
@@ -315,10 +356,13 @@ def _program_temperatures(program: dict[str, Any]) -> list[Any]:
 
 
 def _validate_hvac_mode(state: Any, mode: str) -> None:
-    """Reject a program mode the entity does not expose."""
+    """Reject a program mode the entity does not expose, with a machine code."""
     modes = state.attributes.get("hvac_modes")
     if isinstance(modes, list) and modes and mode not in modes:
-        raise HomeAssistantError(f"HVAC mode {mode} is not available for this climate entity")
+        raise ScheduleError(
+            f"HVAC mode {mode} is not available for this climate entity",
+            "unsupported_hvac_mode", mode=mode,
+        )
 
 
 def _validate_program(state: Any, program: dict[str, Any]) -> None:
@@ -332,16 +376,30 @@ def _validate_program(state: Any, program: dict[str, Any]) -> None:
 
 
 def _validate_climate_target(state: Any, temperatures: list[Any], mode: Any = None) -> None:
-    try:
-        validate_single_target_mode(mode if mode is not None else state.state, None if mode is not None else state.attributes.get("hvac_mode"))
-    except ScheduleError as err:
-        raise HomeAssistantError(str(err)) from err
+    """Validate the target grid against the entity; pure errors keep their code."""
+    validate_single_target_mode(mode if mode is not None else state.state, None if mode is not None else state.attributes.get("hvac_mode"))
     step = _step(state)
     for target in temperatures:
-        try:
-            validate_target(target, state.attributes["min_temp"], state.attributes["max_temp"], step)
-        except ScheduleError as err:
-            raise HomeAssistantError(str(err)) from err
+        validate_target(target, state.attributes["min_temp"], state.attributes["max_temp"], step)
+
+
+@callback
+def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a saved config entry to the current entry version.
+
+    Version 1 entries are the current schema and skip this hook entirely.
+    Future versions return True after rewriting entry data (persisted with
+    a compatible schema); entries written by a newer release are rejected
+    so an outdated integration never saves over newer data.
+    """
+    if entry.version > CONFIG_ENTRY_VERSION:
+        _LOGGER.error(
+            "Config entry for Bubble Climate Scheduler was saved by a newer version; update the integration"
+        )
+        return False
+    if entry.version != CONFIG_ENTRY_VERSION:
+        hass.config_entries.async_update_entry(entry, version=CONFIG_ENTRY_VERSION)
+    return True
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -376,14 +434,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: Any) -> bool:
         except ScheduleValidationError as err:
             entity = call.data.get("climate_entity")
             if entity:
-                await scheduler.async_report_error(entity, str(err))
+                await scheduler.async_report_error(entity, err)
             raise HomeAssistantError(str(err)) from err
 
     async def enable(call: ServiceCall) -> None:
         try:
             await scheduler.async_enable(call.data["climate_entity"], call.data["enabled"])
         except ScheduleValidationError as err:
-            await scheduler.async_report_error(call.data["climate_entity"], str(err))
+            await scheduler.async_report_error(call.data["climate_entity"], err)
             raise
 
     async def delete(call: ServiceCall) -> None:

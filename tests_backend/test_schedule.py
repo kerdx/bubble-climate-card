@@ -25,6 +25,10 @@ snapshot_entity_state = schedule.snapshot_entity_state
 restore_entity_state = schedule.restore_entity_state
 entity_config_changed = schedule.entity_config_changed
 CONFIG_ATTRIBUTES = schedule.CONFIG_ATTRIBUTES
+migrate_storage_data = schedule.migrate_storage_data
+DATA_MIGRATIONS = schedule.DATA_MIGRATIONS
+structured_error = schedule.structured_error
+error_entry = schedule.error_entry
 ROOT = Path(__file__).parents[1]
 
 
@@ -270,6 +274,90 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(boundary.hour, 2)
         self.assertEqual(boundary.minute, 0)
         self.assertEqual(boundary.fold, 1)
+
+
+class StorageMigrationTests(unittest.TestCase):
+    """Migrate-or-discard contract for the scheduler storage payload."""
+
+    def test_current_version_payload_passes_through_without_mutation(self):
+        payload = {"schema_version": 1, "programs": {"climate.x": {}, "last": None}}
+        migrated = migrate_storage_data(payload, 1, 1)
+        self.assertEqual(migrated, payload)
+        self.assertIsNot(migrated, payload)
+        # The stored payload itself must not be rewritten in place.
+        payload["programs"]["climate.y"] = "later"
+        self.assertEqual(migrated["programs"], {"climate.x": {}, "last": None})
+
+    def test_newer_payload_cannot_be_downgraded(self):
+        self.assertIsNone(migrate_storage_data({"schema_version": 2}, 2, 1))
+
+    def test_missing_migration_step_rejects_the_payload(self):
+        # The registry is empty in production today: an old version without
+        # a registered step must fail closed instead of loading raw data.
+        self.assertIsNone(migrate_storage_data({"schema_version": 1}, 1, 2))
+
+    def test_registered_steps_apply_in_order_and_set_the_target_version(self):
+        step_two = lambda payload: {"renamed": payload["programs"], "extra": True}
+        step_three = lambda payload: {**payload, "extra": payload["extra"] and "kept"}
+        DATA_MIGRATIONS.update({1: step_two, 2: step_three})
+        self.addCleanup(DATA_MIGRATIONS.pop, 1)
+        self.addCleanup(DATA_MIGRATIONS.pop, 2)
+        migrated = migrate_storage_data({"schema_version": 1, "programs": {"climate.x": {}}}, 1, 3)
+        self.assertEqual(migrated["renamed"], {"climate.x": {}})
+        self.assertEqual(migrated["extra"], "kept")
+        self.assertEqual(migrated["schema_version"], 3)
+        self.assertNotIn("programs", migrated)
+
+    def test_invalid_inputs_fail_closed(self):
+        self.assertIsNone(migrate_storage_data(None, 1, 1))
+        self.assertIsNone(migrate_storage_data([], 1, 1))
+        self.assertIsNone(migrate_storage_data({}, 0, 1))
+        self.assertIsNone(migrate_storage_data({}, "1", 1))
+
+    def test_step_returning_a_non_dict_rejects_the_payload(self):
+        DATA_MIGRATIONS.update({1: lambda payload: [payload]})
+        self.addCleanup(DATA_MIGRATIONS.pop, 1)
+        self.assertIsNone(migrate_storage_data({"schema_version": 1}, 1, 2))
+
+
+class BackendErrorCodeTests(unittest.TestCase):
+    """Schedule errors carry machine-readable codes the card can translate."""
+
+    def test_validation_errors_carry_codes_and_context(self):
+        with self.assertRaises(ScheduleError) as catch:
+            validate_program([slot("morning"), slot("night")], True)
+        self.assertEqual(catch.exception.code, "slots_overlap")
+        self.assertEqual(catch.exception.context, {"a": "morning", "b": "night"})
+        with self.assertRaises(ScheduleError) as catch:
+            schedule._minute("24:00")
+        self.assertEqual(catch.exception.code, "invalid_time")
+        self.assertEqual(catch.exception.context, {})
+        with self.assertRaises(ScheduleError) as catch:
+            validate_target(30, 7, 28, 0.5)
+        self.assertEqual(catch.exception.code, "target_outside_limits")
+        self.assertEqual(catch.exception.context, {"value": 30.0})
+        with self.assertRaises(ScheduleError) as catch:
+            validate_target(28.3, 7, 30, 0.5)
+        self.assertEqual(catch.exception.code, "target_off_step")
+        self.assertEqual(catch.exception.context, {"value": 28.3})
+        # The English message stays the human-readable fallback.
+        self.assertIn("not aligned to climate temperature step", str(catch.exception))
+
+    def test_structured_error_normalizes_for_storage_and_card(self):
+        known = ScheduleError("bad times", "invalid_time")
+        self.assertEqual(
+            structured_error(known),
+            {"code": "invalid_time", "context": {}, "message": "bad times"},
+        )
+        plain = ValueError("boom")
+        self.assertEqual(
+            structured_error(plain),
+            {"code": "unexpected_failure", "context": {}, "message": "boom"},
+        )
+        self.assertEqual(
+            error_entry("service_call_failed", "unreachable", entity="climate.x"),
+            {"code": "service_call_failed", "context": {"entity": "climate.x"}, "message": "unreachable"},
+        )
 
 
 if __name__ == "__main__":

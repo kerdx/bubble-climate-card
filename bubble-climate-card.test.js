@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, hvacToggleMode, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, getEntitySuggestion, sameCardConfig, effectiveStep, normalizeLayout, isClimateActive, isScheduleEnabled, awayTemperaturePayload, schedulableModes, climateStatusKey, statusLabel, modeLabel, resolveLanguage, cardStrings, fieldLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './bubble-climate-card.js';
+import { BubbleClimateCard, BubbleClimateCardEditor, BUBBLE_CLIMATE_CARD_TAG, BUBBLE_CLIMATE_CARD_EDITOR_TAG, registerBubbleClimateElements, isBubbleClimateElementsRegistered, isHomeAssistantFrontendReady, scheduleBubbleClimateReregistration, clampTarget, temperaturePayload, targetModel, hvacToggleMode, scheduleDraft, validateScheduleDraft, defaultCardConfig, configSchema, configSchemaFields, getEntitySuggestion, sameCardConfig, errorLabel, effectiveStep, normalizeLayout, isClimateActive, isScheduleEnabled, awayTemperaturePayload, schedulableModes, climateStatusKey, statusLabel, modeLabel, resolveLanguage, cardStrings, fieldLabel, pickEntityTimestamp, formatRelativeTime, formatNumber, rowStatusParts, currentTemperatureDisplay } from './custom_components/bubble_climate_scheduler/www/bubble-climate-card.js';
 
 test('module imports without browser DOM and exports the card class', () => {
   assert.equal(typeof BubbleClimateCard, 'function');
@@ -11,17 +11,35 @@ test('module imports without browser DOM and exports the card class', () => {
 test('row status and temperatures preserve readable separators and spacing', () => {
   assert.deepEqual(rowStatusParts({ statusText: 'Off', relativeText: '1 hour ago' }), ['Off', '1 hour ago']);
   assert.equal(currentTemperatureDisplay(20.5, '°C', 'it-IT'), `${formatNumber(20.5, 'it-IT')} °C`);
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   assert.match(source, /\.status-line span\+span:before\{content:' · '/);
   assert.match(source, /overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain/);
   assert.match(source, /\.meta\{flex:1 1 0;min-width:0/);
 });
 
+test('editor schema groups the options into localized sections', () => {
+  assert.deepEqual(configSchema.map((entry) => entry.type), ['grid', 'grid', 'expandable']);
+  assert.deepEqual(configSchema.map((entry) => entry.name), ['identity', 'chips', 'controls']);
+  assert.equal(configSchema[2].collapsed, true);
+  for (const lang of ['en', 'it']) {
+    const strings = cardStrings(lang);
+    assert.deepEqual(Object.keys(strings.sections), ['identity', 'chips', 'controls']);
+    assert.ok(strings.sections.identity && strings.sections.chips && strings.sections.controls);
+  }
+  // Every help entry maps to a real schema field, in both languages.
+  const names = configSchemaFields().map((entry) => entry.name).sort();
+  for (const lang of ['en', 'it']) {
+    const help = cardStrings(lang).help;
+    assert.deepEqual(Object.keys(help).sort(), names);
+  }
+});
+
 test('editor schema exposes climate entity and all supported visual options', () => {
-  assert.deepEqual(configSchema[0].selector.entity, { filter: { domain: ['climate'] } });
-  const fields = configSchema.map((field) => field.name);
-  for (const name of ['entity', 'name', 'icon', 'layout', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(fields.includes(name));
-  assert.deepEqual(configSchema.find((field) => field.name === 'layout').selector, { select: { mode: 'dropdown', options: ['bubble', 'compact'] } });
+  const fields = configSchemaFields();
+  assert.deepEqual(fields[0].selector.entity, { filter: { domain: ['climate'] } });
+  const names = fields.map((entry) => entry.name);
+  for (const name of ['entity', 'name', 'icon', 'layout', 'step', 'show_state_chip', 'show_current_temperature_chip', 'show_humidity_chip', 'show_unavailable_badge', 'show_mode_buttons', 'show_step_controls', 'show_schedule_button']) assert.ok(names.includes(name));
+  assert.deepEqual(fields.find((entry) => entry.name === 'layout').selector, { select: { mode: 'dropdown', options: ['bubble', 'compact'] } });
   assert.deepEqual(defaultCardConfig('climate.living_room'), {
     entity: 'climate.living_room', layout: 'bubble',
     show_state_chip: true, show_current_temperature_chip: true, show_humidity_chip: false,
@@ -45,15 +63,32 @@ test('sameCardConfig compares shallow configs so the editor can skip re-renderin
 });
 
 test('editor builds the form once and never resets the shadow root (static check, no rendering)', () => {
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   const start = source.indexOf('export class BubbleClimateCardEditor');
   const end = source.indexOf('export class BubbleClimateCard extends');
   assert.ok(start !== -1 && end !== -1 && start < end);
   const editor = source.slice(start, end);
   assert.doesNotMatch(editor, /shadowRoot\.innerHTML\s*=/);
   assert.match(editor, /if \(this\._form\) this\._form\.hass = value;/);
-  assert.match(editor, /this\.shadowRoot\.append\(form\)/);
+  assert.match(editor, /this\.shadowRoot\.append\(form, previewBox\)/);
   assert.match(editor, /if \(!sameCardConfig\(this\._formData, this\._config\)\)/);
+});
+
+test('editor serves grouped forms with helpers and an inert live preview', () => {
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
+  const start = source.indexOf('export class BubbleClimateCardEditor');
+  const end = source.indexOf('export class BubbleClimateCard extends');
+  const editor = source.slice(start, end);
+  // hui-form covers grouped schemas; ha-form stays as the standalone fallback.
+  assert.match(editor, /customElements\?\.get\?\.\('hui-form'\) \? 'hui-form' : 'ha-form'/);
+  // Localized section names win over field names in the label callback.
+  assert.match(editor, /this\._strings\(\)\.sections\[schema\.name\] \|\| fieldLabel/);
+  assert.match(editor, /form\.computeHelper = \(schema\) => this\._strings\(\)\.help\[schema\.name\]/);
+  // The preview is a real card fed with the edited config, but inert:
+  // clicks must never call services while the user is only configuring.
+  assert.match(editor, /\.preview\{pointer-events:none\}/);
+  assert.match(editor, /document\.createElement\('bubble-climate-card'\)/);
+  assert.match(editor, /this\._preview\.hass = value;/);
 });
 
 test('entity suggestion targets climate entities only and includes card type and defaults', () => {
@@ -251,7 +286,7 @@ test('outside-schedule temperature validation and payload', () => {
 });
 
 test('bubble schedule pill is a sibling of temperature controls in markup', () => {
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   const bubbleSection = source.slice(source.indexOf('  _renderRow() {'), source.indexOf('  _renderCompact() {'));
   assert.match(bubbleSection, /<div class="controls"><\/div><button class="schedule"/);
   assert.doesNotMatch(bubbleSection, /controls\.append\(schedule\)/);
@@ -320,7 +355,7 @@ test('UI strings follow the Home Assistant locale with an English fallback', () 
 });
 
 test('schedule day pills use unique short labels while aria-labels stay complete', () => {
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   for (const language of ['en', 'it']) {
     const strings = cardStrings(language);
     assert.equal(strings.dayPills.length, 7, `${language} pill labels`);
@@ -467,7 +502,7 @@ test('row shadow CSS scopes a hidden rule to .row (static presence check, no ren
   // No DOM available here, so verify the row shadow CSS statically: an
   // explicit `.row [hidden]` rule must beat the author `.current`/`.controls`
   // display declarations (which otherwise override the UA `[hidden] none`).
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   const rowStart = source.indexOf('  _renderRow() {');
   const compactStart = source.indexOf('  _renderCompact() {');
   assert.ok(rowStart !== -1 && compactStart !== -1 && rowStart < compactStart);
@@ -481,7 +516,7 @@ test('calendar button accent CSS exists per layout (static presence check, no re
   // The calendar button is tinted with the same accent used by the active
   // current-temperature chip when the schedule program is enabled; verify the
   // rule is present and scoped in both layouts without rendering.
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
   const rowStart = source.indexOf('  _renderRow() {');
   const compactStart = source.indexOf('  _renderCompact() {');
   assert.ok(rowStart !== -1 && compactStart !== -1 && rowStart < compactStart);
@@ -738,7 +773,7 @@ test('HVAC card toggle only requests supported heat/off modes', () => {
 });
 
 test('card tap excludes controls and target updates optimistically with service rerender', () => {
- const source=readFileSync(new URL('./bubble-climate-card.js', import.meta.url),'utf8');
+ const source=readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url),'utf8');
  assert.match(source,/role="group" aria-label="Tap card background to toggle heating"/);
  assert.doesNotMatch(source,/ha-card tabindex="0" role="button"/);
  assert.match(source,/path\.some\(node=>node!==card[\s\S]*?node\?\.matches\?\.\('button,input,select,textarea,a,\[role="slider"\],\[role="button"\],\[role="group"\]'\)/);
@@ -763,7 +798,7 @@ test('optimistic target model uses the service payload for single and dual targe
 });
 
 test('every card rebuild restores focus on an active +/- delta and never steals it', async (t) => {
-  const source = readFileSync(new URL('./bubble-climate-card.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
 
   // Static wiring: all four rebuild paths (hass tick, optimistic render, the
   // 8s timeout and the service rollback) go through the same wrapper, so a
@@ -893,4 +928,51 @@ test('every card rebuild restores focus on an active +/- delta and never steals 
   assert.equal(plain.card._focusedDelta(), null);
   plain.card._restoreDeltaFocus(null);
   assert.deepEqual(plain.order, ['activeElement']);
+});
+
+test('errorLabel translates backend error codes with context placeholders', () => {
+  const t = {
+    errors: {
+      entity_unavailable: 'The climate entity is unavailable; the target stays pending.',
+      slots_overlap: 'Slots {a} and {b} overlap.',
+      service_call_failed: 'The climate service call failed: {message}',
+      target_outside_limits: 'Target {value} is outside the climate limits.',
+    },
+  };
+  assert.equal(
+    errorLabel(t, { code: 'slots_overlap', context: { a: 'morning', b: 'night' }, message: 'raw' }),
+    'Slots morning and night overlap.',
+  );
+  assert.equal(
+    errorLabel(t, { code: 'entity_unavailable', context: {}, message: 'Climate entity is unavailable; target is pending' }),
+    'The climate entity is unavailable; the target stays pending.',
+  );
+  assert.equal(
+    errorLabel(t, { code: 'service_call_failed', context: {}, message: 'boom' }),
+    'The climate service call failed: boom',
+  );
+  assert.equal(
+    errorLabel(t, { code: 'target_outside_limits', context: { value: null }, message: 'raw' }),
+    'Target {value} is outside the climate limits.',
+  );
+  // Unknown code, plain legacy strings, and empty inputs fall back safely.
+  assert.equal(errorLabel(t, { code: 'future_code', message: 'kept raw' }), 'kept raw');
+  assert.equal(errorLabel(t, 'Legacy English text'), 'Legacy English text');
+  assert.equal(errorLabel(t, ''), '');
+  assert.equal(errorLabel(t, null), '');
+  assert.equal(errorLabel({}, { code: 'slots_overlap', message: 'raw' }), 'raw');
+});
+
+test('card surfaces route backend errors through errorLabel for translation', () => {
+  const source = readFileSync(new URL('./custom_components/bubble_climate_scheduler/www/bubble-climate-card.js', import.meta.url), 'utf8');
+  assert.ok(source.includes("p.textContent = errorLabel(t, program.last_error)"), 'schedule dialog must translate last_error');
+  const routed = source.match(/errorLabel\(t, err\?\.message \|\| err\)/g);
+  assert.ok(routed && routed.length >= 2, 'delete and save failures must be routed through errorLabel');
+  // English and Italian both enumerate every known backend code.
+  const maps = String(source).match(/errors: \{/g);
+  assert.equal(maps.length, 2, 'both language blocks must carry an errors map');
+  for (const code of ['entity_unavailable', 'service_call_failed', 'slots_overlap', 'target_outside_limits', 'no_program', 'unsupported_hvac_mode']) {
+    const occurrences = source.split(` ${code}: `).length - 1;
+    assert.ok(occurrences >= 2, `code ${code} must be localized in both languages`);
+  }
 });

@@ -92,6 +92,14 @@ class PackageTests(unittest.TestCase):
         self.assertIsNotNone(headings[0] and match, f"CHANGELOG must start with '## vX.Y.Z', found: {headings[0]!r}")
         self.assertEqual(manifest["version"], match.group(1))
 
+    def test_manifest_keys_sorted_like_hassfest(self):
+        """hassfest requires: domain, name, then the remaining keys sorted."""
+        with (ROOT / "custom_components/bubble_climate_scheduler/manifest.json").open(encoding="utf-8") as file:
+            manifest = json.load(file)
+        keys = list(manifest)
+        self.assertEqual(keys[:2], ["domain", "name"])
+        self.assertEqual(keys[2:], sorted(keys[2:]))
+
     def test_service_exceptions_are_translated_in_every_language(self):
         """Exceptions raised by the services carry keys both languages define."""
         # Every ScheduleValidationError code that can reach a service caller;

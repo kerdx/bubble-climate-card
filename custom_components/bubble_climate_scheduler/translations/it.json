@@ -1,5 +1,11 @@
 {
   "config": {
+    "step": {
+      "user": {
+        "title": "Bubble Climate Scheduler",
+        "description": "Aggiunge l\u2019integrazione dello scheduler; i programmi si configurano con i suoi servizi."
+      }
+    },
     "abort": {
       "single_instance_allowed": "È consentita una sola istanza."
     }

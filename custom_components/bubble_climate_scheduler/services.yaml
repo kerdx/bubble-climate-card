@@ -32,7 +32,7 @@ save_program:
       selector:
         select:
           options:
-            - off
+            - "off"
             - heat
             - cool
             - auto

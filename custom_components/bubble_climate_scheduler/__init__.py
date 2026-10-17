@@ -39,6 +39,10 @@ from .schedule import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# The integration is configured only through its config entry and services:
+# hassfest expects one of the canonical empty schemas here.
+CONFIG_SCHEMA = cv.empty_config_schema
+
 
 class ScheduleValidationError(HomeAssistantError):
     """Invalid schedule request, distinct from failed persistent writes."""
